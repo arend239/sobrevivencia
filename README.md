@@ -1,2 +1,2 @@
-# sobrevivencia
-Tarefas MAT02038 - Análise de Sobrevivência
+# MAT02038 - Análise de Sobrevivência
+Repositório de tarefas da disciplina 
