@@ -1,0 +1,86 @@
+---
+title: "Tarefa 5 - Análise de Sobrevivência"
+author: "Isabela Silva e João Arend"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 2
+---
+
+# Preparação
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(survival)
+
+dados <- read.csv2("Exemplo_Leucemia.csv", stringsAsFactors = FALSE)
+
+dados$Tempo   <- as.numeric(gsub(",", ".", dados$Tempo))
+dados$Evento  <- as.numeric(dados$Evento)
+dados$PesoBi  <- factor(dados$PesoBi, levels = c(0, 1), labels = c("Baixo", "Alto"))
+dados$IdadeBi <- factor(dados$IdadeBi, levels = c(0, 1), labels = c("Jovem", "Idoso"))
+```
+
+---
+
+# Parte 1: Análise do Fator Peso (`PesoBi`)
+
+## 1.1. Curva Log-Log para o Peso
+
+```{r log_log_peso}
+fit_peso <- survfit(Surv(Tempo, Evento) ~ PesoBi, data = dados)
+plot(fit_peso, fun = "cloglog", col = c("blue", "red"), lwd = 2,
+     main = "Gráfico Log-Log: Fator Peso",
+     xlab = "log(Tempo)", ylab = "log(-log(S(t)))")
+legend("topleft", legend = levels(dados$PesoBi), col = c("blue", "red"), lty = 1, lwd = 2)
+```
+
+**Interpretação:**
+
+No gráfico acima, as linhas de Peso Baixo e Peso Alto mantêm uma distância aproximadamente constante ao longo de todo o log(tempo) e não se cruzam. Conclui-se que a suposição de riscos proporcionais está atendida para a variável Peso, e o modelo de Cox é adequado para esta análise.
+
+## 1.2. Modelo de Cox para o Peso
+
+```{r cox_peso}
+modelo_peso <- coxph(Surv(Tempo, Evento) ~ PesoBi, data = dados)
+summary(modelo_peso)
+```
+
+**Interpretação:**
+O modelo de Cox estimou um Hazard Ratio de 0,256 (IC 95%: 0,107–0,618) para pacientes com Peso Alto em relação a pacientes com Peso Baixo.
+
+- O risco instantâneo de recidiva ou morte para quem tem peso baixo é aproximadamente 74% maior do risco de quem tem peso alto
+
+- Esse efeito é estatisticamente significativo (p = 0,002), indicando forte evidência de associação entre peso e desfecho nesta amostra.
+
+---
+
+# Parte 2: Análise do Fator Idade (`IdadeBi`)
+
+## 2.1. Curva Log-Log para a Idade
+
+```{r log_log_idade}
+fit_idade <- survfit(Surv(Tempo, Evento) ~ IdadeBi, data = dados)
+plot(fit_idade, fun = "cloglog", col = c("darkgreen", "darkorchid"), lwd = 2,
+     main = "Gráfico Log-Log: Fator Idade",
+     xlab = "log(Tempo)", ylab = "log(-log(S(t)))")
+legend("topleft", legend = levels(dados$IdadeBi),
+       col = c("darkgreen", "darkorchid"), lty = 1, lwd = 2)
+```
+
+**Interpretação:**
+
+As linhas de Jovem e Idoso são aproximadamente paralelas. Consideramos que a suposição de riscos proporcionais está satisfeita para a variável Idade.
+
+## 2.2. Modelo de Cox para a Idade
+
+```{r cox_idade}
+modelo_idade <- coxph(Surv(Tempo, Evento) ~ IdadeBi, data = dados)
+summary(modelo_idade)
+```
+
+**Interpretação:**
+O modelo estimou um Hazard Ratio de 2,045 (IC 95%: 1,031–4,056) para pacientes Idosos (idade > 96 meses) em relação a Jovens.
+
+- Pacientes idosos apresentam risco de evento aproximadamente 2 vezes maior que pacientes jovens em qualquer ponto do tempo.
+
+- A associação é estatisticamente significativa (p = 0,04), embora o intervalo de confiança seja amplo.

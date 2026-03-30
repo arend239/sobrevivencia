@@ -1,0 +1,99 @@
+---
+title: "Tarefa 3 - Análise de Sobrevivência"
+output: pdf_document
+---
+
+João Arend - 00577787
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+library(tidyverse)
+library(survival)
+library(survminer)
+library(knitr)
+```
+
+```{r tabela_simples}
+
+dados <- read.csv2("Exemplo_Camundongo.csv")
+tempos <- sort(unique(dados$tempo))
+
+tabela_final <- data.frame()
+S1 <- 1; S2 <- 1; S3 <- 1
+
+for(t in tempos) {
+
+  n1 <- sum(dados$grupo == 1 & dados$tempo >= t)
+  d1 <- sum(dados$grupo == 1 & dados$tempo == t & dados$evento == 1)
+  c1 <- sum(dados$grupo == 1 & dados$tempo == t & dados$evento == 0)
+
+  n2 <- sum(dados$grupo == 2 & dados$tempo >= t)
+  d2 <- sum(dados$grupo == 2 & dados$tempo == t & dados$evento == 1)
+  c2 <- sum(dados$grupo == 2 & dados$tempo == t & dados$evento == 0)
+
+  n3 <- sum(dados$grupo == 3 & dados$tempo >= t)
+  d3 <- sum(dados$grupo == 3 & dados$tempo == t & dados$evento == 1)
+  c3 <- sum(dados$grupo == 3 & dados$tempo == t & dados$evento == 0)
+
+  nj <- n1 + n2 + n3
+  dj <- d1 + d2 + d3
+  cj <- c1 + c2 + c3
+
+  # Esperanças
+  E1 <- (n1/nj) * dj
+  E2 <- (n2/nj) * dj
+  E3 <- (n3/nj) * dj
+
+  # Prob. Sobrev
+  if(n1 > 0) {
+    S1 <- S1 * ((n1 - d1) / n1)
+  }
+
+  if(n2 > 0) {
+    S2 <- S2 * ((n2 - d2) / n2)
+  }
+
+  if(n3 > 0) {
+    S3 <- S3 * ((n3 - d3) / n3)
+  }
+
+  linha <- data.frame(tempo = t,
+                      n_1j=n1, n_2j=n2, n_3j=n3, n_j=nj,
+                      d_1j=d1, d_2j=d2, d_3j=d3, d_j=dj,
+                      c_1j=c1, c_2j=c2, c_3j=c3, c_j=cj,
+                      E1j=round(E1,4), E2j=round(E2,4), E3j=round(E3,4),
+                      S1j=round(S1,4), S2j=round(S2,4), S3j=round(S3,4))
+
+  tabela_final <- rbind(tabela_final, linha)
+}
+```
+
+# Tabela
+
+Tabela dividida devido layout do output:
+
+```{r}
+knitr::kable(tabela_final[,1:13])
+knitr::kable(tabela_final[,c(1,14:length(names(tabela_final)))])
+```
+
+Neste caso os números ficaram iguais aos aprensetados nos slides, porém era esperado uma pequena diferença devido a maneira que o cálculo é realizado.
+
+# Log-Rank Global
+
+```{r}
+survdiff(Surv(tempo, evento) ~ grupo, data = dados)
+```
+
+como $0,08 > 0,05$, não rejeitamos a hipótese nula ($H_0$). Isso significa que, estatisticamente, não há evidências suficientes para afirmar que as curvas de sobrevivência são diferentes entre si no nível de 5%.
+
+# Comparações Múltiplas com Correção de Bonferroni
+
+```{r}
+pairwise_survdiff(Surv(tempo, evento) ~ grupo,
+                                     data = dados,
+                                     p.adjust.method = "bonferroni")
+```
+
+Embora nenhum valor significativo e com o teste global não significativo, a comparação 2 vs 3 ($p=0,066$) parece ter uma diferença marginal.

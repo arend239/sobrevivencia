@@ -1,0 +1,127 @@
+---
+title: "Tarefa 2 - Análise de Sobrevivência"
+output: pdf_document
+---
+
+João Arend - 00577787
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+
+library(survival)
+library(survminer)
+dados <- read.csv2("Exemplo_Divorcio.csv")
+```
+
+# Tarefa
+
+Queremos alterar os dados para que a curva de KM não vá para zero.
+
+Definição do estimador:
+
+$$
+\hat{S}(t) = \prod_{j:t \leq t} (1-\frac{d_j}{n_j})
+$$
+
+O produtório finaliza se:
+
+- $d_j=n_j$, nesse caso a fração vai a 1 e portanto $\hat{S}(t)=0$
+- estamos no último $t$ do estudo ($t_max$) e $d_j<n_j$, ou seja, temos mais expostos do que eventos.
+
+Como nesse exemplo temos apenas um exposto no tempo de evento máximo (29), precisamos apenas censurar esse caso como será demonstrado a seguir.
+
+**Ps:** Caso houvessem empates de tempo no máximo (mais de um caso registrado nos 29 anos) teríamos que ter todos os casos desse último tempo sendo evento para que a curva fosse para zero, c.c. a curva não terminaria em zero.
+
+## Exemplos
+
+Pegamos o caso 1 que tem apenas eventos e censuramos o último:
+
+```{r caso4}
+
+dados$evento_caso4 <- dados$evento_caso1
+dados$evento_caso4[dados$tempo == 29] <- 0
+
+fit_caso4 <- survfit(Surv(tempo, evento_caso4) ~ 1, data = dados)
+
+ggsurvplot(fit_caso4,
+           data = dados,
+           title = "Sobrevivência ao Divórcio - Caso 1 Customizado",
+           xlab = "Tempo (Anos)",
+           ylab = "Probabilidade de Sobrevivência",
+           surv.median.line = "h",
+           conf.int = TRUE,
+           palette = "royalblue")
+```
+
+Último valor da curva:
+
+```{r}
+tail(fit_caso4$surv, 1)
+```
+
+Mesma ideia com os casos 2 e 3:
+
+```{r}
+dados$evento_caso5 <- dados$evento_caso2
+dados$evento_caso5[dados$tempo == 29] <- 0
+
+fit_caso5 <- survfit(Surv(tempo, evento_caso5) ~ 1, data = dados)
+
+p1 <- ggsurvplot(fit_caso5,
+    data = dados,
+    title = "Caso 2 Customizado",
+    xlab = "Tempo (Anos)",
+    ylab = "Probabilidade de Sobrevivência",
+    surv.median.line = "h",
+    conf.int = TRUE,
+    palette = "royalblue")
+
+dados$evento_caso6 <- dados$evento_caso3
+dados$evento_caso6[dados$tempo == 29] <- 0
+
+fit_caso6 <- survfit(Surv(tempo, evento_caso6) ~ 1, data = dados)
+
+p2 <- ggsurvplot(fit_caso6,
+    data = dados,
+    title = "Caso 3 Customizado",
+    xlab = "Tempo (Anos)",
+    ylab = "Probabilidade de Sobrevivência",
+    surv.median.line = "h",
+    conf.int = TRUE,
+    palette = "royalblue")
+
+res <- arrange_ggsurvplots(list(p1, p2), ncol = 2, nrow = 1)
+
+res
+```
+
+```{r, echo = FALSE}
+cat("Sobrevivência Final (Caso 2 customizado):", tail(fit_caso5$surv, 1), "\n")
+cat("Sobrevivência Final (Caso 3 customizado):", tail(fit_caso6$surv, 1), "\n")
+```
+
+### Exemplo do outro extremo (agora terminando a curva em zero):
+
+Censuramos todos os casos e apenas o último é evento, portanto a curva deve terminar em zero como demonstrado anteriormente.
+
+```{r caso7}
+
+dados$evento_caso7 <- dados$evento_caso1 - 1
+dados$evento_caso7[dados$tempo == 29] <- 1
+
+fit_caso7 <- survfit(Surv(tempo, evento_caso7) ~ 1, data = dados)
+
+ggsurvplot(fit_caso7,
+           data = dados,
+           title = "Sobrevivência ao Divórcio - Caso Customizado",
+           xlab = "Tempo (Anos)",
+           ylab = "Probabilidade de Sobrevivência",
+           surv.median.line = "h",
+           conf.int = TRUE,
+           palette = "royalblue")
+
+tail(fit_caso7$surv, 1)
+```
+
