@@ -1,0 +1,137 @@
+---
+title: "Tarefa 4 - Análise de Sobrevivência"
+author: "Isabella Silva e João Arend"
+output:
+  pdf_document:
+---
+```{r}
+# bibliotecas:
+library(readr)
+library(survival)
+library(survminer)
+```
+
+# Coisas para colocar no relatório:
+
+## 1) O que é analise de sobrevivencia, censura à direita, definir um exemplo: leucemia (definir os elementos), esquema básico(inicio do estudo, finalização), se não houver no texto podemos criar. O que estimamos? FS OU HA
+
+- Objetivo: analisar fatores que mais afetam o tempo de sobrevivência de uma criança brasileira com até 15 anos com Leucemia Linfoide Aguda;
+
+- Período: 1988 - 1992;
+
+- Variável resposta: tempo a partir da ausência da doença até a volta ou morte;
+
+- Total de observações no banco: 103;
+
+- Total de eventos: 39;
+
+- Total de censuras: 64;
+
+- Variáveis estudadas nesse trabalho: Peso e idade (em meses). 
+
+
+*inicio do seguimento:* dia que a criança teve remissao
+
+*evento:* recidiva ou morte 
+
+*inicio do estudo:* crianças que tiveram remissao de 1988 ate 1992 
+o acompanhamento maximo foi ate 1992, mas quando deveriam ter parado de colocar pessoas no estudo
+
+```{r}
+dados=  read_csv2("Exemplo_Leucemia.csv")
+```
+
+
+## Fator Peso: 
+
+## 2) Estimar função de sobrevivência e em cima dela estimar taxas de sobrevivencia e medianas, km estimar proporções e mediana do tempo 
+### Como estimamos FS: 
+
+TV
+KP
+NA 
+
+## Pq escolher o KM?
+
+## Como estimar o IC da FS estimada pelo KM 
+
+Qual escolher? Qual é a diferença entre eles?
+
+
+
+
+## Como comparar FS?  
+
+
+## Como avaliar tempo de seguimento?
+
+## Estimar a HA a partir do KM 
+
+
+## O que o modelo de cox estima? Qual a suposição do modelo? 
+
+
+## Diferença entre RR e HR
+
+
+## Fator idade:
+
+```{r}
+summary(dados$Idade)
+hist(dados$Idade)
+```
+
+
+```{r}
+dados$idade_cat = ifelse(dados$Idade < 60, 1,
+                         ifelse(dados$Idade < 90, 2, 3)) 
+
+table(dados$idade_cat)
+```
+
+
+
+# 3) Curva log-log para fator IDADE
+
+```{r}
+m1_idd=survfit(Surv(Tempo,Evento) ~ idade_cat, data=dados)
+m1_idd
+summary(m1_idd,extend=TRUE)
+km1_idd=ggsurvplot(m1_idd, data=dados, 
+                   xlab="Tempo(anos)",
+                   fun = "cloglog",
+                   title="Sobrevivência", 
+                   conf.int=F, 
+                   pval=TRUE,
+                   palette=c("blue","red", "green"))
+km1_idd
+```
+
+# 4) Cox para fator IDADE
+
+## Aplicação
+
+```{r}
+cox1_idd <- coxph(Surv(Tempo, Evento) ~ idade_cat,
+              data=dados, x=T)
+summary(cox1_idd)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
