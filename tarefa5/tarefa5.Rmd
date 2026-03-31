@@ -1,6 +1,6 @@
 ---
 title: "Tarefa 5 - Análise de Sobrevivência"
-author: "Isabela Silva e João Arend"
+author: "Isabella Silva e João Arend"
 output:
   pdf_document:
     toc: true
