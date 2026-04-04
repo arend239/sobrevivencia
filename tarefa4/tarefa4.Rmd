@@ -1,0 +1,251 @@
+---
+title: "Tarefa 4 - Análise de Sobrevivência"
+author: "Isabella Silva e João Arend"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+---
+
+```{r, echo = FALSE}
+# Como a proposta é elaborar um relatório para um cliente tiramos o código do output.
+# knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+```{r setup}
+
+dados <- read.csv2("Exemplo_Leucemia.csv", stringsAsFactors = FALSE)
+dados$Tempo   <- as.numeric(gsub(",", ".", dados$Tempo))
+dados$Evento  <- as.numeric(dados$Evento)
+dados$PesoBi  <- factor(dados$PesoBi, levels = c(0, 1), labels = c("Baixo", "Alto"))
+dados$IdadeBi <- factor(dados$IdadeBi, levels = c(0, 1), labels = c("Jovem", "Idoso"))
+
+library(readr)
+library(survival)
+library(survminer)
+```
+
+# Definições:
+
+## Análise de sobrevivencia:
+
+A análise de sobrevivência é um ramo da estatística onde a variável de interesse é o **tempo até a ocorrência de um evento**. Intuitivamente, buscamos responder: "Qual a probabilidade de um indivíduo 'sobreviver' (não sofrer o evento) além de um certo tempo $t$?"
+
+## Censura:
+
+A censura ocorre quando não temos a informação exata de quando o evento aconteceu para um indivíduo. O tipo mais comum é a **censura à direita**, onde sabemos apenas que o evento ainda não ocorreu até o último momento em que o indivíduo foi observado. Isso pode acontecer porque o estudo acabou, o indivíduo saiu do estudo por outros motivos e etc. **Importante:** Não descartamos esses dados já que eles somam informação de que o indivíduo sobreviveu *pelo menos* até aquele momento.
+
+## Estudo utilizado:
+
+Neste relatório, analisamos dados de 103 crianças brasileiras com até 15 anos diagnosticadas com Leucemia Linfoide Aguda (LLA) entre 1988 e 1992. O objetivo é identificar fatores que influenciam o tempo até a recidiva (volta da doença) ou óbito.
+
+A **censura à direita** neste estudo de leucemia ocorre quando, ao final do período de acompanhamento (1992), a criança ainda está em remissão (sem a doença). Sabemos que ela sobreviveu sem recidiva por *pelo menos* $X$ anos, mas não sabemos se ou quando o evento ocorrerá no futuro.
+
+### Elementos do esquema básico:
+- **Início do seguimento:** Data em que a criança atingiu a remissão.
+- **Evento de interesse:** Recidiva da leucemia ou óbito (o que ocorrer primeiro).
+- **Tempo de sobrevivência:** Intervalo entre a remissão e o evento ou a última observação (censura).
+- **Início do estudo:** Recrutamento de crianças que entraram em remissão entre 1988 e 1992.
+
+**O que estimamos?**
+A **Função de Sobrevivência $S(t)$**, que é a probabilidade de estar livre de recidiva após o tempo $t$, e a **Função de Risco (Hazard) $h(t)$**, que descreve o risco instantâneo de sofrer o evento dado que o indivíduo sobreviveu até o momento $t$.
+
+- Objetivo: analisar fatores que mais afetam o tempo de sobrevivência de uma criança brasileira com até 15 anos com Leucemia Linfoide Aguda;
+- Período: 1988 - 1992;
+- Variável resposta: tempo a partir da ausência da doença até a volta ou morte;
+- Total de observações no banco: 103;
+- Total de eventos: 39;
+- Total de censuras: 64;
+- Variáveis estudadas nesse trabalho: **Peso e Idade**.
+
+### Tabela Descritiva Geral
+Abaixo, apresentamos um resumo das principais características da amostra estudada:
+```{r}
+# Tabela de frequências para as variáveis categóricas do estudo
+resumo_geral <- data.frame(
+  Variável = c("Evento (Recidiva/Morte)", "Censura", "Peso (Baixo)", "Peso (Alto)", "Idade (Jovem)", "Idade (Idoso)"),
+  Frequência = c(
+    sum(dados$Evento == 1),
+    sum(dados$Evento == 0),
+    sum(dados$PesoBi == "Baixo"),
+    sum(dados$PesoBi == "Alto"),
+    sum(dados$IdadeBi == "Jovem"),
+    sum(dados$IdadeBi == "Idoso")
+  )
+)
+resumo_geral$Porcentagem <- paste0(round(resumo_geral$Frequência / nrow(dados) * 100, 1), "%")
+
+knitr::kable(resumo_geral, caption = "Resumo das Características dos Pacientes (N=103)")
+```
+
+# Análise de Fatores
+
+## Fator Peso:
+
+### Descritiva do Peso
+```{r}
+tab_peso <- table(dados$PesoBi, ifelse(dados$Evento == 1, "Evento", "Censura"))
+knitr::kable(tab_peso, caption = "Distribuição de Eventos por Categoria de Peso")
+```
+
+### Estimar função de sobrevivência, taxas e medianas
+
+O fator peso foi categorizado no banco de dados como "Baixo" e "Alto" (`PesoBi`).
+
+```{r}
+km_peso <- survfit(Surv(Tempo, Evento) ~ PesoBi, data = dados)
+km_peso
+```
+
+O grupo de Peso Baixo apresentou mediana de 0,84 anos, enquanto o grupo de Peso Alto apresentou mediana de 3,64 anos. Para ambos, o IC95% superior não foi estimado (NA).
+
+### Por que escolher o KM?
+
+### Como estimar o IC da FS estimada pelo KM
+
+**fórmula base:** variância de Greenwood
+
+Antes de qualquer transformação, precisamos da variância de S(t). A fórmula de Greenwood resolve isso propagando o erro de cada passo:
+
+$$
+\hat{Var}[\hat{S}(t)] = [\hat{S}(t)]^2 \sum_{j:t_j<t} {\frac{d_j}{n_j(n_j - d_j)}}
+$$
+
+O software R, por padrão, utiliza a transformação `log` para construir os intervalos de confiança (IC) de 95% do KM. Outros métodos incluem `plain` (linear) e `log-log`.
+
+1. Plain (linear) — aplica a normal diretamente em $S(t)$:
+```{r}
+survfit(Surv(Tempo, Evento) ~ PesoBi, data = dados, conf.type = "plain")
+```
+
+Pouco usada, perto de $S(t)$ = 0 ou 1, os limites podem sair de $[0,1]$.
+
+2. Log — aplica a normal no log de S(t), depois volta:
+
+$$
+IC = exp(log\hat{S}(t)\pm1,96 \frac{\hat{ep}[\hat{S}(t)]}{\hat{S}(t)})
+$$
+
+```{r}
+survfit(Surv(Tempo, Evento) ~ PesoBi, data = dados, conf.type = "log")
+```
+
+O limite inferior sempre fica positivo, mas o superior ainda pode ultrapassar 1 quando S(t) está perto de 1.
+
+3.  Log-log - aplica a normal em $log(-log\hat{S}(t))$:
+```{r}
+survfit(Surv(Tempo, Evento) ~ PesoBi, data = dados, conf.type = "log-log")
+```
+
+**Qual escolher e a diferença:** Os estimadores `log` e `log-log` são mais recomendados porque têm mais garantia de que os limites do IC da função de sobrevivência fiquem dentro do intervalo [0, 1]. O estimador `plain` pode ultrapassar os limites com mais facilidade.
+
+### Como comparar FS?
+
+```{r}
+ggsurvplot(km_peso, data = dados, pval = TRUE, conf.int = TRUE,
+           title = "Curva de Sobrevivência (KM) - Fator Peso")
+```
+
+**Resultado:** A Figura mostra que as curvas de sobrevivência para os grupos de Peso (Alto e Baixo) são muito semelhantes e se cruzam diversas vezes. As larguras dos IC95% se sobrepõem massivamente, indicando que não há uma diferença clara de risco entre as duas categorias de peso.
+
+### Como avaliar tempo de seguimento?
+
+Calcula-se pelo método do "Kaplan-Meier Reverso", onde a censura se torna o evento de interesse, e o evento passa a ser censurado.
+
+```{r}
+km_seguimento <- survfit(Surv(Tempo, 1 - Evento) ~ 1, data = dados)
+km_seguimento
+```
+
+O tempo mediano de seguimento foi de 2,34 anos (IC95%: 1,94–3,01). Isso indica que metade dos pacientes que não sofreram o evento foram acompanhados por pelo menos 2,34 anos.
+
+### Estimar a HA a partir do KM
+
+O Risco Acumulado ($\Lambda(t)$) e a estimativa de Nelson-Aalen.
+
+```{r}
+na_peso <- survfit(Surv(Tempo, Evento) ~ PesoBi, data = dados, type = "fh")
+
+ggsurvplot(na_peso, data = dados, fun = "cumhaz",
+           title = "Risco Acumulado (Nelson-Aalen) por Peso",
+           ylab = "Risco Acumulado", xlab = "Tempo")
+```
+
+A função de risco acumulado, ou função Hazard (HA), descreve a soma das taxas instantâneas de falha ao longo do tempo. O estimador de Nelson-Aalen (NA) e as curvas do Risco Acumulado obtidas via KM não mostraram diferenças expressivas entre as categorias do peso, confirmando a mesma conclusão visualizada na função de sobrevivência.
+
+### O que o modelo de cox estima? Qual a suposição do modelo?
+
+O modelo de Cox estima o **Hazard Ratio (HR)**, ou a Razão de Riscos, que quantifica o impacto de uma ou mais variáveis explicativas (covariáveis) sobre o risco de falha. O modelo baseia-se na suposição de **Riscos Proporcionais**, ou seja, que a razão de riscos entre dois indivíduos com características diferentes se mantém constante ao longo do tempo.
+
+### Diferença entre RR e HR
+
+O **Risco Relativo (RR)**, comumente usado em estudos de caso-controle ou coortes curtas, compara a proporção total de pessoas que tiveram o evento ao final do estudo, ignorando *quando* o evento aconteceu no período.
+
+O **Hazard Ratio (HR)**, gerado pelo modelo de Cox, além de tratar os dados censurados corretamente, compara o risco instantâneo a cada momento no tempo ao longo de todo o estudo.
+
+## Fator idade:
+
+Aplicar a mesma lógica do peso para a idade, agora com a variável dividida em 3 categorias.
+
+### Descritiva da Idade (Categorizada)
+
+Abaixo, a distribuição dos pacientes e eventos conforme as três faixas etárias definidas:
+
+```{r}
+# Criando a variável categórica conforme sugerido
+dados$idade_cat <- ifelse(dados$Idade < 60, 1,
+                         ifelse(dados$Idade < 90, 2, 3))
+dados$idade_cat <- factor(dados$idade_cat, levels = c(1, 2, 3),
+                          labels = c("< 60", "60 a < 90", ">= 90"))
+
+tab_idade <- table(dados$idade_cat, ifelse(dados$Evento == 1, "Evento", "Censura"))
+knitr::kable(tab_idade, caption = "Distribuição de Eventos por Faixa Etária (Meses)")
+
+summary(dados$Idade)
+```
+
+**Teoria:** Para avaliar a associação da idade com o tempo até recidiva/morte, ajustamos e aplicamos estimativas de Kaplan-Meier seguidas dos testes de log-rank e Peto.
+
+### Curva de Sobrevivência e Testes (Idade)
+
+```{r}
+km_idade <- survfit(Surv(Tempo, Evento) ~ idade_cat, data = dados)
+km_idade
+
+# Testes de Log-Rank e Harrington-Fleming (Peto & Peto)
+survdiff(Surv(Tempo, Evento) ~ idade_cat, data = dados, rho = 0) # Log-rank
+survdiff(Surv(Tempo, Evento) ~ idade_cat, data = dados, rho = 1) # HF
+```
+
+O teste de Log-rank retorna um p-valor na borda de significância (0.05), enquanto o de Peto & Peto (dando mais ênfase a eventos iniciais) rejeita a hipótese nula com p=0.04.
+
+```{r}
+ggsurvplot(km_idade, data = dados, pval = TRUE, conf.int = FALSE,
+           title = "Sobrevivência (KM) por Idade",
+           xlab = "Tempo (anos)",
+           palette = c("blue", "red", "green"))
+```
+
+**Resultado:** A Figura mostra que a curva verde (>= 90 meses) tem o decaimento mais abrupto de sobrevivência inicialmente, sugerindo pior prognóstico. Indicando que crianças mais velhas neste estudo sofrem eventos mais rápidos do que as crianças mais novas (curvas azul e vermelha).
+
+### Curva log-log para fator IDADE
+
+```{r}
+ggsurvplot(km_idade, data=dados,
+           xlab="Tempo (anos)",
+           fun = "cloglog",
+           title="Curva Log-Log (Idade)",
+           conf.int=FALSE,
+           palette=c("blue","red", "green"))
+```
+
+A curva log-log nos ajuda a checar graficamente a suposição de riscos proporcionais do modelo de Cox. Embora exista alguma variação, as linhas não parecem se cruzar de forma drástica, sugerindo que a suposição de riscos proporcionais pode ser razoavelmente mantida.
+
+### Cox para fator IDADE e Aplicação
+
+```{r}
+cox1_idd <- coxph(Surv(Tempo, Evento) ~ idade_cat,
+              data = dados, x = TRUE)
+summary(cox1_idd)
+```
+
+Na regressão de Cox, o grupo de referência é a idade `< 60`. O HR estimado para crianças com >= 90 meses é de 1,82 (IC95%: 0,85–3,89), indicando risco aproximadamente 82% maior do que o grupo de referência (<60 meses). No entanto, esse efeito não é estatisticamente significativo (p = 0,123), consistente com o p-valor global do modelo de Cox (p = 0,3).
