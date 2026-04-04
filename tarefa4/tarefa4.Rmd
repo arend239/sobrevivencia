@@ -145,8 +145,6 @@ ggsurvplot(km_peso, data = dados, pval = TRUE, conf.int = TRUE,
            title = "Curva de Sobrevivência (KM) - Fator Peso")
 ```
 
-**Resultado:** A Figura mostra que as curvas de sobrevivência para os grupos de Peso (Alto e Baixo) são muito semelhantes e se cruzam diversas vezes. As larguras dos IC95% se sobrepõem massivamente, indicando que não há uma diferença clara de risco entre as duas categorias de peso.
-
 ### Como avaliar tempo de seguimento?
 
 Calcula-se pelo método do "Kaplan-Meier Reverso", onde a censura se torna o evento de interesse, e o evento passa a ser censurado.
