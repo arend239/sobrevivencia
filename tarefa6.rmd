@@ -2,17 +2,18 @@
 title: "Tarefa 4 - Análise de Sobrevivência"
 author: "Isabella Silva e João Arend"
 output:
+  html_document:
+    toc: true
+    toc_depth: '3'
+    df_print: paged
   pdf_document:
     toc: true
     toc_depth: 3
     number_sections: true
 ---
-
-A fazer: 
-
-- Interpretar cox Peso. 
-- Interpretar cox interativo. 
-- Hazard Ratio conjunto.
+```{r}
+getwd()
+```
 
 
 ```{r, echo = FALSE}
@@ -228,7 +229,7 @@ summary(cox1_peso)
 ```
 
 
-
+O modelo foi ajustado com **Peso Baixo** como referência. Crianças com Peso Alto apresentaram risco 74,4% menor de recidiva ou óbito (**HR = 0,256**; IC95%:0,107–0,618; p = 0,002), o que equivale a dizer que crianças com Peso Baixo têm risco aproximadamente **3,9 vezes maior**.
 ---
 
 ## Fator idade
@@ -365,15 +366,19 @@ lines(m1$time,m1$cumhaz,type="s",col="red")
 ```
 
 ```{r}
-
 cox_interativo <- coxph(Surv(Tempo, Evento) ~ factor(idade_cat)
                                             + factor(PesoBi)
                                             + factor(idade_cat)*factor(PesoBi), data = dados)
 
 summary(cox_interativo)
+```
+
+O modelo inclui interação entre Peso e Idade, tendo como referência o grupo **Peso Baixo / Idade < 60 meses**. O efeito do Peso Alto é significativo apenas nesse grupo de referência (**HR = 0,15**; IC95%: 0,03–0,71; p = 0,016).Os termos de interação não foram estatisticamente significativos (p > 0,27),indicando que **não há evidência de que o efeito do peso varie entre as faixas etárias**.
+
+```{r}
 publish(cox_interativo)
 ```
 
-
+O efeito do Peso foi significativo nas duas faixas etárias mais jovens(Idade < 60: HR = 0,15, p = 0,016; Idade 60–90: HR = 0,20, p = 0,042),mas não no grupo ≥ 90 meses (HR = 0,51, p = 0,383). Nenhuma comparaçãoenvolvendo idade isoladamente foi significativa (p > 0,10).
 
 
