@@ -69,19 +69,35 @@ Abaixo, apresentamos um resumo das principais características da amostra estuda
 ```{r}
 # Tabela de frequências para as variáveis categóricas do estudo
 resumo_geral <- data.frame(
-  Variável = c("Evento (Recidiva/Morte)", "Censura", "Peso (Baixo)", "Peso (Alto)", "Idade (Jovem)", "Idade (Idoso)"),
+  Variável = c("Evento (Recidiva/Morte)", "Censura", "Peso (Baixo)", "Peso (Alto)"), #, "Idade (Jovem)", "Idade (Idoso)"),
   Frequência = c(
     sum(dados$Evento == 1),
     sum(dados$Evento == 0),
     sum(dados$PesoBi == "Baixo"),
-    sum(dados$PesoBi == "Alto"),
-    sum(dados$IdadeBi == "Jovem"),
-    sum(dados$IdadeBi == "Idoso")
+    sum(dados$PesoBi == "Alto")
+    #sum(dados$IdadeBi == "Jovem"),
+    #sum(dados$IdadeBi == "Idoso")
   )
 )
 resumo_geral$Porcentagem <- paste0(round(resumo_geral$Frequência / nrow(dados) * 100, 1), "%")
 
 knitr::kable(resumo_geral, caption = "Resumo das Características dos Pacientes (N=103)")
+```
+
+### KM global
+```{r}
+fit_global <- survfit(Surv(Tempo, Evento) ~ 1, data = dados)
+fit_global
+ggsurvplot(fit_global,
+           data = dados,
+           conf.int = TRUE,
+           surv.median.line = "hv",
+           title = "Curva de Sobrevivência Global",
+           xlab = "Tempo (Anos)",
+           ylab = "Probabilidade de Sobrevivência",
+           #palette = "black",         # Geralmente usa-se uma cor neutra
+           #ggtheme = theme_minimal()
+           )
 ```
 
 # Análise de Fatores
@@ -110,7 +126,9 @@ ggsurvplot(km_peso, data = dados, conf.int = TRUE,
            risk.table.height = 0.3,
            title = "Curva de sobrevivência (KM)",
            legend.labs = c("Peso Baixo", "Peso Alto"),
-           ggtheme = theme_minimal())
+           pval = TRUE
+           #ggtheme = theme_minimal()
+           )
 
 ```
 
