@@ -1,0 +1,75 @@
+---
+title: "Tarefa 7 - Análise de Sobrevivência"
+author: "Isabella Silva e João Arend"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(survival)
+library(survminer)
+library(Publish)
+library(knitr)
+
+dados <- read.csv2("Exemplo_Leucemia.csv", stringsAsFactors = FALSE)
+
+dados$Tempo   <- as.numeric(gsub(",", ".", dados$Tempo))
+dados$Evento  <- as.numeric(dados$Evento)
+dados$PesoBi  <- factor(dados$PesoBi, levels = c(0, 1), labels = c("Baixo", "Alto"))
+dados$IdadeBi <- factor(dados$IdadeBi, levels = c(0, 1), labels = c("Jovem", "Idoso"))
+```
+
+# Introdução
+
+Nesta tarefa, avançamos na análise dos fatores prognósticos para a Leucemia Linfoide Aguda (LLA), focando na interação entre o **Peso** e a **Idade** (ambos binarizados). O objetivo é verificar se o efeito do peso no risco de recidiva ou óbito depende da faixa etária do paciente, o que chamamos de modificação de efeito.
+
+# Modelo Aditivo (Peso + Idade)
+
+Primeiramente, ajustamos o modelo de Cox considerando os dois fatores de forma independente.
+
+```{r modelo_aditivo}
+modelo_aditivo <- coxph(Surv(Tempo, Evento) ~ PesoBi + IdadeBi, data = dados)
+summary(modelo_aditivo)
+```
+
+Neste modelo, observamos que tanto o Peso quanto a Idade apresentam efeitos significativos (p < 0,05). Pacientes com **Peso Alto** têm um risco reduzido (HR = 0,21), enquanto pacientes **Idosos** têm um risco aumentado (HR = 2,43) em relação aos seus respectivos grupos de referência, após ajuste mútuo.
+
+# Modelo com Interação (Peso + Idade + Peso:Idade)
+
+Para avaliar se a idade modifica o efeito do peso (modificação de efeito), adicionamos um termo de interação ao modelo aditivo anterior.
+
+```{r modelo_interacao}
+modelo_int <- coxph(Surv(Tempo, Evento) ~ PesoBi + IdadeBi + PesoBi:IdadeBi, data = dados)
+summary(modelo_int)
+```
+
+## Interpretação do Modelo com Interação
+
+Diferente do modelo aditivo, em um modelo com interação os coeficientes individuais não representam mais o efeito "médio" da variável, mas sim o efeito no **grupo de referência** da outra variável:
+
+1.  **PesoBiAlto (-1,41):** Representa o efeito do peso alto especificamente no grupo de pacientes **Jovens**. Neste grupo, o peso alto reduz o risco significativamente (HR = 0,24; p = 0,004).
+2.  **IdadeBiIdoso (2,45):** Representa o efeito da idade avançada especificamente no grupo de **Peso Baixo**. O HR de 11,6 indica um risco altíssimo, mas com um intervalo de confiança extremamente largo. Isso ocorre porque temos apenas 1 paciente idoso com peso baixo na amostra, tornando esta estimativa muito instável.
+3.  **Interação (PesoBiAlto:IdadeBiIdoso):** Com um coeficiente de -1,65 (HR = 0,19), este termo testa se a diferença entre peso alto e baixo é a mesma para jovens e idosos. O p-valor de **0,192** indica que, estatisticamente, a interação **não é significativa**.
+
+**Conclusão sobre a Interação:** Como o termo de interação não atingiu significância estatística, não temos evidências suficientes para afirmar que a idade modifica o efeito do peso. O modelo sugere que o efeito protetor do peso alto é consistente em ambas as faixas etárias. Por parcimônia, o modelo aditivo (sem a interação) é preferível para a conclusão final.
+
+# Modelo Final e Interpretação dos Hazard Ratios (HR)
+
+Como a interação não foi significativa, o modelo mais adequado para descrever os dados e fornecer estimativas mais estáveis é o modelo aditivo (sem interação).
+
+```{r modelo_final}
+publish(modelo_aditivo)
+```
+
+## Interpretação dos Hazard Ratios
+
+Com base no modelo aditivo final, podemos concluir:
+
+1.  **Efeito do Peso:** Mantendo a idade constante, pacientes com **Peso Alto** apresentam um risco de evento **79,3% menor** (HR = 0,207; IC95% 0,084 – 0,513; p < 0,001) em comparação aos pacientes com Peso Baixo. Ou seja, o baixo peso é um forte fator de risco para recidiva ou óbito.
+2.  **Efeito da Idade:** Mantendo o peso constante, pacientes **Idosos** apresentam um risco de evento **2,43 vezes maior** (HR = 2,427; IC95% 1,197 – 4,923; p = 0,014) do que os pacientes Jovens.
+
+Em conclusão, ambos os fatores (Peso e Idade) influenciam o tempo de sobrevivência de forma independente, mas não há evidências de que um interfira na magnitude do efeito do outro.
