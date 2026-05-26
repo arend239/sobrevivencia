@@ -30,7 +30,7 @@ library(dplyr)
 \begin{res}
 O estudo utilizou dados do banco de dados SEER (Surveillance, Epidemiology, and End Results) referentes a pacientes diagnosticados entre \textbf{1975 e 2016}.
 
-O tempo total de coleta de dados abrange \textbf{41 anos}. Seguimento máximo observado foi de \textbf{384 meses (32 anos)}. O artigo menciona que a mediana de sobrevida global (OS) foi de \textbf{73 meses (~6 anos)} e a sobrevida doença-específica (DSS) foi de \textbf{134 meses (-11 anos)}.
+O tempo total de coleta de dados abrange \textbf{41 anos}. Seguimento máximo observado foi de \textbf{384 meses (32 anos)}. O artigo menciona que a mediana de sobrevida global (OS) foi de \textbf{73 meses ($\approx$ 6 anos)} e a sobrevida doença-específica (DSS) foi de \textbf{134 meses ($\approx$ 11 anos)}.
 \end{res}
 
 ## Importância do Tempo de Seguimento
