@@ -1,0 +1,191 @@
+---
+title: "Tarefa 8 - Análise de Artigo"
+subtitle: "Prognostic factors and survival outcome of primary pulmonary acinar cell carcinoma"
+author: "João Arend - 00577787"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+header-includes:
+  - \usepackage{xcolor}
+  - \definecolor{meuazul}{HTML}{1E40AF}
+  - \newenvironment{res}{\color{meuazul}}{\color{black}\par}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(survival)
+library(survminer)
+library(knitr)
+library(dplyr)
+
+```
+
+## Período de Estudo e Seguimento
+
+
+**Pergunta:** Qual a data de início e até quando foi o seguimento? Quanto tempo os pacientes foram seguidos?
+
+\begin{res}
+O estudo utilizou dados do banco de dados SEER (Surveillance, Epidemiology, and End Results) referentes a pacientes diagnosticados entre \textbf{1975 e 2016}.
+
+O tempo total de coleta de dados abrange \textbf{41 anos}. Seguimento máximo observado foi de \textbf{384 meses (32 anos)}. O artigo menciona que a mediana de sobrevida global (OS) foi de \textbf{73 meses (~6 anos)} e a sobrevida doença-específica (DSS) foi de \textbf{134 meses (-11 anos)}.
+\end{res}
+
+## Importância do Tempo de Seguimento
+
+**Pergunta:** Por que é importante saber quanto tempo eles foram seguidos/acompanhados?
+
+\begin{res}
+
+1. \textbf{Estabilidade das Estimativas:} Para calcular métricas como a sobrevida em 5 anos por exemplo, é necessário que um número considerável de pacientes tenha sido acompanhado por pelo menos esse período.
+
+2. \textbf{Poder Estatístico:} Métodos como  log-rank e o modelo de Cox dependem da ocorrência do evento (neste caso, a morte). Um tempo maior permite observar mais eventos, aumentando a capacidade do modelo de detectar diferenças reais entre grupos.
+
+\end{res}
+
+## Perfil dos Pacientes
+
+**Pergunta:** Qual é o perfil dos pacientes estudados?
+
+\begin{res}
+Segue uma reprodução da tabela 1 do artigo que expõe sobre o perfil dos pacientes:
+
+\end{res}
+
+```{r perfil_pacientes, echo=FALSE}
+
+tabela_1 <- data.frame(
+  Variavel = c(
+    "Total",
+    "Idade ao diagnóstico", "Idade ao diagnóstico",
+    "Sexo", "Sexo",
+    "Raça", "Raça", "Raça", "Raça",
+    "Ano de Diagnóstico", "Ano de Diagnóstico", "Ano de Diagnóstico",
+    "Grau", "Grau", "Grau", "Grau", "Grau",
+    "Estadiamento", "Estadiamento", "Estadiamento", "Estadiamento", "Estadiamento", "Estadiamento", "Estadiamento", "Estadiamento",
+    "Tamanho do Tumor (cm)", "Tamanho do Tumor (cm)", "Tamanho do Tumor (cm)", "Tamanho do Tumor (cm)", "Tamanho do Tumor (cm)", "Tamanho do Tumor (cm)",
+    "Linfonodos Regionais", "Linfonodos Regionais",
+    "Cirurgia", "Cirurgia",
+    "Radiação", "Radiação",
+    "Quimioterapia", "Quimioterapia"
+  ),
+  Categoria = c(
+    "Todos os pacientes",
+    "Média ± Desvio Padrão", "Mediana (intervalo)",
+    "Masculino", "Feminino",
+    "Branco", "Negro", "Asiático/Indiano", "Outros",
+    "1975-1994", "1994-2005", "2005-2016",
+    "I", "II", "III", "IV", "Outro/Não classificado",
+    "IA", "IB", "IIA", "IIB", "IIIA", "IIIB", "IV", "Outro/Não classificado",
+    "<= 1", "1-3", "3-5", "5-7", "> 7", "Outro/Não classificado",
+    "Negativo/Desconhecido", "Positivo",
+    "Não/Desconhecido", "Realizada",
+    "Não/Desconhecido", "Realizada",
+    "Não/Desconhecido", "Realizada"
+  ),
+  N_Pacientes = c(
+    "2918",
+    "65.2 ± 8.95", "66 (22-79)",
+    "1140", "1778",
+    "2327", "237", "299", "55",
+    "53", "444", "2421",
+    "455", "1633", "470", "10", "350",
+    "621", "338", "132", "88", "173", "22", "211", "1333",
+    "137", "1352", "470", "148", "65", "746",
+    "2404", "514",
+    "496", "2422",
+    "2465", "453",
+    "2068", "850"
+  ),
+  Porcentagem_Perc = c(
+    "100",
+    "-", "-",
+    "39.1", "60.9",
+    "79.7", "8.2", "10.2", "1.9",
+    "1.8", "15.2", "82.9",
+    "15.5", "55.9", "16.1", "0.3", "12.0",
+    "21.3", "11.6", "4.5", "3.0", "5.9", "0.7", "7.2", "45.8",
+    "4.7", "46.3", "16.1", "5.1", "2.2", "25.6",
+    "82.4", "17.6",
+    "17.0", "83.0",
+    "84.5", "15.5",
+    "70.9", "29.1"
+  )
+)
+
+kable(tabela_1,
+      col.names = c("Característica", "Categoria", "Nº de Pacientes", "Porcentagem (%)"),
+      align = "llcc",
+      caption = "Patient and tumor characteristics of PACC diagnosed in SEER 18 registries")
+```
+
+## Suficiência do Seguimento para Predições
+
+**Pergunta:** O estudo tem seguimento suficiente para fazer as predições?
+
+\begin{res}
+
+Com um horizonte de 41 anos e seguimento máximo de 32 anos, o estudo é robusto para as predições de 1, 3 e 5 anos propostas.
+Para além de 5 anos como são bem menos pacientes observados teríamos IC's mais amplos e estimativas menos confiáveis.
+
+\end{res}
+
+## Comparação de Curvas de Sobrevivência (OS vs DSS)
+
+**Pergunta:** Compare os gráficos (a) e (b) da figura 2. Por que a curva da morte específica mostra melhor sobrevivência? É devido às censuras?
+
+\begin{res}
+A curva (a) representa a Sobrevida Global (OS) e a curva (b) a Sobrevida Doença-Específica (DSS). A curva DSS apresenta uma sobrevivência superior (mais alta no gráfico) porque a definição de "evento" muda:
+
+1.  OS (Overall Survival): Qualquer óbito é considerado um evento.
+2.  DSS (Disease-Specific Survival): Apenas óbitos causados pelo câncer de pulmão (PACC) são eventos. Óbitos por outras causas (ex: doenças cardíacas, acidentes) são tratados como censura.
+
+Portanto, como no DSS censuramos as mortes que não são pelo câncer, a probabilidade de sobrevivência "à doença" parece ser maior.
+
+\end{res}
+
+## Análise por Raça e Proporcionalidade de Riscos
+
+**Pergunta:** Analise o gráfico (c) da figura 3. Os riscos são proporcionais? Por que raça foi classificado em 3 categorias? Você faria diferente? Truncaria os gráficos? Se sim, qual? Se truncar no tempo 192, o p-valor do log-rank será muito diferente? E se truncar em 72?
+
+\begin{res}
+
+- \textbf{Riscos Proporcionais:} Visualmente, as curvas para "Brancos", "Negros" e "Asiáticos/Indianos" não se cruzam significativamente durante a maior parte do tempo, sugerindo que a suposição de riscos proporcionais é razoável. Contudo, no final do gráfico (após 144 meses), a variabilidade aumenta muito.
+
+- \textbf{Categorização:} Agrupar categorias com baixa contagem é uma prática comum para evitar intervalos de confiança muito grandes e falta de poder nos testes. Ao que parece não houve uma escolha clara sobre as categorias apenas agrupou-se da forma apresentada pelo banco.
+
+- \textbf{Truncamento:} Sim, eu truncaria o gráfico em 144 ou 192 meses. Como se vê no gráfico, o "Number at risk" cai para números muito baixos (ex: 7 pacientes aos 192 meses). O erro padrão nessas caudas é imenso, tornando o final da curva pouco confiável.
+
+- \textbf{Impacto no P-valor:} Se truncarmos em 192, o p-valor do log-rank provavelmente não mudaria muito, pois a maior parte das diferenças ocorre nos primeiros anos. Se truncarmos em 72 (6 anos), o p-valor ainda poderia ser significativo, mas perderíamos a informação sobre diferença entre raças no longo prazo.
+
+\end{res}
+
+## Inclusão de Radiação no Modelo de Cox
+
+**Pergunta:** A radiação deveria estar no modelo de Cox multivariado?
+
+\begin{res}
+Na análise univariada, a radiação foi significativa. No entanto, na Tabela 2 (Multivariada), o p-valor para radiação foi de 0,59 (OS) e 0,64 (DSS).
+De um ponto de vista puramente estatístico, ela poderia ser removida. Porém, em estudos clínicos, é razoável mantermos variáveis não significativas se elas forem conhecidas por serem fortes confundidores ou se o objetivo for mostrar justamente que, após ajustar por outros fatores (como estágio), a radiação não altera o risco de forma independente.
+\end{res}
+
+## Multicolinearidade: Estágio vs Componentes
+
+**Pergunta:** Sabendo que o estadiamento é calculado a partir do tamanho do tumor (T), número de linfonodos (N) e grau, você colocaria essas 4 variáveis no modelo?
+
+\begin{res}
+Não é o ideal. Isso gera um problema de multicolinearidade. O estadiamento (Stage) é uma variável composta por T, N e M (metástases). Colocar o Stage junto com o tamanho do tumor e o status linfonodal no mesmo modelo faz com que as variáveis "disputem" a mesma variância.
+\end{res}
+
+## Tratamento e Estadiamento no Modelo
+
+**Pergunta:** Sabendo que o tratamento depende do estadiamento, está correto a maneira que eles colocaram essas variáveis no modelo?
+
+\begin{res}
+Colocar Variáveis de Tratamento (Cirurgia, Quimioterapia) ao lado de Estadiamento em um modelo de Cox padrão é arriscado devido ao viés de indicação.
+
+Na prática (como notado pelos próprios autores), pacientes recebem quimioterapia frequentemente porque são de alto risco cirúrgico ou têm tumores avançados. Se o tratamento é determinado pela gravidade inicial da doença, a simples inclusão das variáveis no modelo de Cox não "limpa" totalmente esse viés.
+\end{res}
+
