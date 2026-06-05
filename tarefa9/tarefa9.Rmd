@@ -1,0 +1,219 @@
+---
+title: "Tarefa 9 - Modelos Paramétricos"
+subtitle: "Análise de Sobrevida - Exemplo Leucemia (Censura vs. Filtro)"
+author: "João Arend - 00577787"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+header-includes:
+  - \usepackage{xcolor}
+  - \definecolor{meuazul}{HTML}{1E40AF}
+  - \newenvironment{res}{\color{meuazul}}{\color{black}\par}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(survival)
+library(survminer)
+library(knitr)
+library(dplyr)
+library(ggplot2)
+dados <- read.csv2("Exemplo_Leucemia.csv")
+```
+
+## Truncamento
+
+### Método 1: Censura Administrativa em 2 Anos
+
+Neste método, não descartamos nenhuma observação. Pacientes que foram seguidos por mais de 2 anos são considerados como "censurados" no tempo 2. Portanto temos a informação de que eles sobreviveram *pelo menos* 2 anos.
+
+```{r metodo_censura}
+
+# Censura
+dados_cens <- dados %>%
+  mutate(
+    Tempo_trunc = ifelse(Tempo > 2, 2, Tempo),
+    Evento_trunc = ifelse(Tempo > 2, 0, Evento)
+  )
+
+# Modelos
+m_km_cens    <- survfit(Surv(Tempo_trunc, Evento_trunc) ~ 1, data = dados_cens)
+m_exp_cens   <- survreg(Surv(Tempo_trunc, Evento_trunc) ~ 1, data = dados_cens, dist = "exponential")
+m_wei_cens   <- survreg(Surv(Tempo_trunc, Evento_trunc) ~ 1, data = dados_cens, dist = "weibull")
+m_lnorm_cens <- survreg(Surv(Tempo_trunc, Evento_trunc) ~ 1, data = dados_cens, dist = "lognorm")
+```
+
+### Método 2: Filtragem de Dados (Exclusão)
+
+Neste método, simplesmente removemos do banco de dados qualquer paciente cujo tempo de acompanhamento seja superior a 2 anos.
+
+```{r metodo_filtro}
+
+# Filtro
+dados_filt <- dados %>%
+  filter(Tempo <= 2)
+
+# Modelos
+m_km_filt    <- survfit(Surv(Tempo, Evento) ~ 1, data = dados_filt)
+m_exp_filt   <- survreg(Surv(Tempo, Evento) ~ 1, data = dados_filt, dist = "exponential")
+m_wei_filt   <- survreg(Surv(Tempo, Evento) ~ 1, data = dados_filt, dist = "weibull")
+m_lnorm_filt <- survreg(Surv(Tempo, Evento) ~ 1, data = dados_filt, dist = "lognorm")
+```
+
+### Diferenças entre abordagens
+
+1. **Censura Administrativa (Método 1):** Mantemos todos os pacientes no denominador do cálculo da sobrevida (número em risco). Se um paciente viveu 5 anos, ele contribui para a estimativa de sobrevida até o tempo 2 como alguém que não sofreu o evento.
+
+2. **Filtragem/Exclusão (Método 2):** Ao remover os pacientes que viveram mais de 2 anos, estamos selecionando apenas os indivíduos que tiveram o evento precocemente ou que foram censurados antes de 2 anos. Isso causa um \textbf{viés de seleção} : a curva de sobrevida cairá muito mais rápido do que a real, pois descartamos justamente os pacientes que tiveram melhor prognóstico (maior tempo de sobrevida).
+
+Em resumo: no Método 1, usamos a informação de que o paciente viveu *pelo menos* 2 anos. No Método 2, agimos como se esses pacientes nunca tivessem existido na amostra.
+
+## Comparação Visual e AIC (Método 1)
+
+```{r comparacao_visual, fig.height=6, fig.width=8, echo = FALSE}
+
+tempos <- seq(0, 2, 0.01)
+
+# Parâmetros e Sobrevida - Método 1
+alfa_exp <- exp(m_exp_cens$coefficients[1])
+s_exp <- exp(-tempos / alfa_exp)
+
+alfa_wei <- exp(m_wei_cens$coefficients[1])
+gama_wei <- 1 / m_wei_cens$scale
+s_wei <- exp(-(tempos / alfa_wei)^gama_wei)
+
+mi_lnorm <- m_lnorm_cens$coefficients[1]
+sigma_lnorm <- m_lnorm_cens$scale
+s_lnorm <- pnorm(-(log(tempos) - mi_lnorm) / sigma_lnorm)
+
+# Labels com parâmetros
+label_exp   <- paste0("Exp (alpha=", round(alfa_exp, 2), ")")
+label_wei   <- paste0("Wei (alpha=", round(alfa_wei, 2), ", gamma=", round(gama_wei, 2), ")")
+label_lnorm <- paste0("Log-Norm (mi=", round(mi_lnorm, 2), ", sigma=", round(sigma_lnorm, 2), ")")
+
+plot(m_km_cens, conf.int = FALSE, mark.time = TRUE, lwd = 2,
+     xlab = "Tempo (anos)", ylab = "S(t)", main = "Ajuste Paramétrico (Censura em 2 anos)")
+lines(tempos, s_exp, col = "red", lwd = 2, lty = 2)
+lines(tempos, s_wei, col = "blue", lwd = 2, lty = 3)
+lines(tempos, s_lnorm, col = "darkgreen", lwd = 2, lty = 4)
+legend("bottomleft", 
+       legend = c("KM", label_exp, label_wei, label_lnorm),
+       col = c("black", "red", "blue", "darkgreen"), lty = 1:4, lwd = 2, bty = "n", cex = 0.8)
+```
+
+```{r aic_calculo_cens, echo = FALSE}
+aic_table_cens <- data.frame(
+  Modelo = c("Exponencial", "Weibull", "Log-Normal"),
+  AIC = c(AIC(m_exp_cens), AIC(m_wei_cens), AIC(m_lnorm_cens))
+)
+kable(aic_table_cens, digits = 2, caption = "AIC dos modelos (Método 1: Censura)")
+```
+
+## Comparação Visual e AIC (Método 2)
+
+Embora não seja o método mais adequado, apresentamos aqui o ajuste dos modelos para o banco de dados filtrado (onde as observações > 2 anos foram excluídas).
+
+```{r comparacao_visual_filt, fig.height=6, fig.width=8, echo = FALSE}
+
+# Parâmetros e Sobrevida - Método 2
+alfa_exp_f <- exp(m_exp_filt$coefficients[1])
+s_exp_f <- exp(-tempos / alfa_exp_f)
+
+alfa_wei_f <- exp(m_wei_filt$coefficients[1])
+gama_wei_f <- 1 / m_wei_filt$scale
+s_wei_f <- exp(-(tempos / alfa_wei_f)^gama_wei_f)
+
+mi_lnorm_f <- m_lnorm_filt$coefficients[1]
+sigma_lnorm_f <- m_lnorm_filt$scale
+s_lnorm_f <- pnorm(-(log(tempos) - mi_lnorm_f) / sigma_lnorm_f)
+
+# Labels com parâmetros
+label_exp_f   <- paste0("Exp (alpha=", round(alfa_exp_f, 2), ")")
+label_wei_f   <- paste0("Wei (alpha=", round(alfa_wei_f, 2), ", gamma=", round(gama_wei_f, 2), ")")
+label_lnorm_f <- paste0("Log-Norm (mi=", round(mi_lnorm_f, 2), ", sigma=", round(sigma_lnorm_f, 2), ")")
+
+plot(m_km_filt, conf.int = FALSE, mark.time = TRUE, lwd = 2,
+     xlab = "Tempo (anos)", ylab = "S(t)", main = "Ajuste Paramétrico (Filtro em 2 anos)")
+lines(tempos, s_exp_f, col = "red", lwd = 2, lty = 2)
+lines(tempos, s_wei_f, col = "blue", lwd = 2, lty = 3)
+lines(tempos, s_lnorm_f, col = "darkgreen", lwd = 2, lty = 4)
+legend("bottomleft", 
+       legend = c("KM Filt", label_exp_f, label_wei_f, label_lnorm_f),
+       col = c("black", "red", "blue", "darkgreen"), lty = 1:4, lwd = 2, bty = "n", cex = 0.8)
+```
+
+```{r aic_calculo_filt, echo = FALSE}
+
+aic_table_filt <- data.frame(
+  Modelo = c("Exponencial", "Weibull", "Log-Normal"),
+  AIC = c(AIC(m_exp_filt), AIC(m_wei_filt), AIC(m_lnorm_filt))
+)
+kable(aic_table_filt, digits = 2, caption = "AIC dos modelos (Método 2: Filtro)")
+```
+
+## Previsões | Extrapolação
+
+Como discutido em aula modelos paramétricos têm a "vantagem" de poder realizar predições. Abaixo, comparamos como os modelos ajustados pelos dois métodos (Censura vs. Filtro) se comportam quando tentamos prever a sobrevida além dos dois anos, comparando-os com a curva de KM do banco de dados completo (sem truncamento).
+
+```{r extrapolacao_km_full, echo = FALSE}
+
+m_km_full <- survfit(Surv(Tempo, Evento) ~ 1, data = dados)
+tempos_longos <- seq(0, 5, 0.01)
+```
+
+### Extrapolação com Método 1 (Censura)
+
+```{r plot_extrapolacao_cens, fig.height=5, fig.width=8, echo = FALSE}
+
+s_exp_c   <- exp(-tempos_longos / alfa_exp)
+s_wei_c   <- exp(-(tempos_longos / alfa_wei)^gama_wei)
+s_lnorm_c <- pnorm(-(log(tempos_longos) - mi_lnorm) / sigma_lnorm)
+
+plot(m_km_full, conf.int = FALSE, lwd = 2, xlim = c(0, 5),
+     xlab = "Tempo (anos)", ylab = "S(t)", main = "Extrapolação: Ajuste por Censura (Método 1)")
+abline(v = 2, lty = 2, col = "grey") # Linha do truncamento
+lines(tempos_longos, s_exp_c, col = "red", lwd = 2, lty = 2)
+lines(tempos_longos, s_wei_c, col = "blue", lwd = 2, lty = 3)
+lines(tempos_longos, s_lnorm_c, col = "darkgreen", lwd = 2, lty = 4)
+legend("topright", 
+       legend = c("KM Real", label_exp, label_wei, label_lnorm),
+       col = c("black", "red", "blue", "darkgreen"), lty = 1:4, lwd = 2, bty = "n", cex = 0.8)
+```
+
+Os modelos ajustados pelo **Método 1 (Censura)** conseguem capturar a tendência da sobrevida e fornecem predições razoáveis mesmo para além dos 2 anos, pois a informação dos sobreviventes foi preservada via censura.
+
+### Extrapolação com Método 2 (Filtro)
+
+```{r plot_extrapolacao_filt, fig.height=5, fig.width=8, echo = FALSE}
+
+s_exp_f   <- exp(-tempos_longos / alfa_exp_f)
+s_wei_f   <- exp(-(tempos_longos / alfa_wei_f)^gama_wei_f)
+s_lnorm_f <- pnorm(-(log(tempos_longos) - mi_lnorm_f) / sigma_lnorm_f)
+
+plot(m_km_full, conf.int = FALSE, lwd = 2, xlim = c(0, 5),
+     xlab = "Tempo (anos)", ylab = "S(t)", main = "Extrapolação: Ajuste por Filtro (Método 2)")
+abline(v = 2, lty = 2, col = "grey")
+lines(tempos_longos, s_exp_f, col = "red", lwd = 2, lty = 2)
+lines(tempos_longos, s_wei_f, col = "blue", lwd = 2, lty = 3)
+lines(tempos_longos, s_lnorm_f, col = "darkgreen", lwd = 2, lty = 4)
+legend("topright", 
+       legend = c("KM Real", label_exp_f, label_wei_f, label_lnorm_f),
+       col = c("black", "red", "blue", "darkgreen"), lty = 1:4, lwd = 2, bty = "n", cex = 0.8)
+```
+
+Já os modelos ajustados pelo **Método 2 (Filtro)** falham na extrapolação. Resultado esperado considerando o descarte de informações.
+
+## Conclusão e Critérios de Seleção
+
+Consideremos o **método 1 (censuras)** como melhor escolha para truncar os dados.
+
+Ps:
+Na **Tabela 2 (Método de Filtro)**, vemos valores de AIC muito mais baixos, mas isso **não significa** que o Método 2 é melhor. O AIC caiu apenas porque o tamanho da amostra foi reduzido (excluímos os sobreviventes), o que aumenta artificialmente a verossimilhança relativa. **Não podemos comparar AIC entre métodos** já que o banco de dados é diferente.
+
+### Melhor Modelo
+
+Embora o modelo Exponencial apresente numericamente o menor AIC, a diferença em relação ao Log-Normal é praticamente insignificante. Considerando que o Exponencial assume um risco (hazard) constante ao longo do tempo.
+
+Concluí-se que, para os dados de Leucemia com acompanhamento **limitado a 2 anos**, o **Modelo Log-Normal** é a escolha mais robusta.
