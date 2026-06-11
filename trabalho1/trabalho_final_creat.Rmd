@@ -1,0 +1,792 @@
+---
+title: "Análise de Sobrevivência - Trabalho Final"
+subtitle: "A LONG-TERM STUDY OF PROGNOSIS IN MONOCLONAL GAMMOPATHY OF UNDETERMINED SIGNIFICANCE"
+author: "Davi Augusto, Eduardo Garcez, João Arend, Luan Frederico, Thiago Schedler"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: false
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+    theme: cosmo
+    highlight: tango
+    code_folding: show
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    message = FALSE,
+    warning = FALSE,
+    fig.width = 9,
+    fig.height = 5.2,
+    dpi = 120
+)
+
+set.seed(202605)
+library(dplyr)
+library(ggplot2)
+library(survival)
+library(survminer)
+library(kableExtra)
+
+kde_colors <- c(
+    "#1f77b4", "#e4572e", "#2ca02c", "#7b2cbf",
+    "#f2a541", "#17a398", "#4d908e"
+)
+
+theme_set(theme_minimal(base_size = 13))
+
+scale_color_kde <- function(...) {
+    scale_color_manual(values = kde_colors, ...)
+}
+
+scale_fill_kde <- function(...) {
+    scale_fill_manual(values = kde_colors, ...)
+}
+```
+
+<style>
+body {
+  color: #1f2933;
+}
+
+.main-container {
+  max-width: 1120px !important;
+}
+
+h1, h2, h3 {
+  color: #17324d;
+  font-weight: 750;
+}
+
+h1 {
+  border-bottom: 3px solid #e7edf3;
+  padding-bottom: 0.25em;
+  margin-top: 1.25em;
+}
+
+.title {
+  color: #102a43;
+  font-weight: 800;
+}
+
+.subtitle {
+  color: #486581;
+}
+
+pre {
+  border-radius: 8px;
+  border: 1px solid #d9e2ec;
+}
+
+code {
+  color: #9a3412;
+}
+
+.tocify {
+  border-radius: 8px;
+  border: 1px solid #d9e2ec;
+}
+
+.callout {
+  border-left: 6px solid #2f80ed;
+  background: #f3f8ff;
+  padding: 14px 18px;
+  margin: 18px 0;
+  border-radius: 0 8px 8px 0;
+}
+
+.callout strong {
+  color: #17324d;
+}
+
+.algorithm {
+  border-left: 6px solid #17a398;
+  background: #f0fbf9;
+  padding: 14px 18px;
+  margin: 18px 0;
+  border-radius: 0 8px 8px 0;
+}
+
+.interpretation {
+  border-left: 6px solid #e4572e;
+  background: #fff6f0;
+  padding: 14px 18px;
+  margin: 18px 0;
+  border-radius: 0 8px 8px 0;
+}
+
+.checkpoint {
+  border: 1px solid #d9e2ec;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  padding: 14px 18px;
+  margin: 20px 0;
+  border-radius: 8px;
+}
+
+.plot-caption {
+  color: #52606d;
+  font-size: 0.95em;
+  margin-top: -8px;
+}
+
+table {
+  font-size: 0.95em;
+}
+
+.azul {
+  color: #1e40af;
+  background-color: #eff6ff; /* (Opcional) Fundo azul super claro para destacar o bloco */
+  border-left: 4px solid #3b82f6; /* (Opcional) Linha lateral esquerda */
+  padding: 12px 16px;
+  margin: 15px 0;
+  border-radius: 0 6px 6px 0;
+}
+
+</style>
+
+
+## Introdução
+
+### Contexto
+
+O presente trabalho utiliza o banco de dados **mgus2**, disponível no pacote *survival* da linguagem R.
+
+Estes dados são provenientes de um estudo de longo prazo realizado pela Mayo Clinic (cortesia do Dr. Robert Kyle) sobre a história natural de pacientes com **Gamopatia Monoclonal de Significância Indeterminada (MGUS)**.
+
+O conjunto de dados é uma extensão de um estudo anterior, incluindo recrutamentos até o ano de **1994** e acompanhamento (follow-up) até **1999**.
+
+**Objetivo**
+
+\begin{res}
+O objetivo principal \textbf{analisar o prognóstico e a história natural de pacientes diagnosticados com MGUS.}
+\end{res}
+
+Especificamente, o estudo busca **observar o tempo até a progressão para uma malignidade de plasmócitos (PCM)**, como o Mieloma Múltiplo, ou a ocorrência de óbito.
+
+### Dados
+
+O banco de dados contém informações de **1.341 pacientes** sequenciais (registrados como **1.384 observações** no arquivo de ajuda do R).
+
+Os identificadores dos pacientes foram removidos por questões de privacidade, e as idades e tempos de acompanhamento foram arredondados para garantir anonimato.
+
+As **variáveis** contidas no banco são:
+
+- **id:** Identificador único do indivíduo.
+
+- **age:** Idade do paciente no momento do diagnóstico (em anos).
+
+- **sex:** Sexo do paciente (F para Feminino, M para Masculino).
+
+- **dxyr:** Ano em que ocorreu o diagnóstico.
+
+- **hgb:** Nível de hemoglobina.
+
+- **creat:** Nível de creatinina.
+
+- **mspike:** Tamanho do pico monoclonal no soro (medido em g/dL). Esta variável quantifica a "proteína M" (proteína anormal) no sangue, identificada via Eletroforese de Proteínas Séricas (EPS). Valores acima de 1,5 g/dL são clinicamente relevantes para o risco de evolução da doença.
+
+- **ptime:** Tempo (em meses) até a progressão para uma malignidade de plasmócitos (PCM) ou até o último contato.
+
+- **pstat:** Indicador de ocorrência de PCM (0 = não, 1 = sim).
+
+- **futime:** Tempo (em meses) até o óbito ou até o último contato.
+
+- **death:** Indicador de ocorrência de óbito (0 = não, 1 = sim).
+
+```{r head_mgus2}
+knitr::kable(head(survival::mgus2))
+```
+
+### Itens para Análise de Sobrevivência
+
+Para atender ao objetivo principal do estudo, que é avaliar o prognóstico e a progressão da Gamopatia Monoclonal de Significância Indeterminada (MGUS), os elementos da análise de sobrevivência são definidos da seguinte forma:
+
+- **População:** A população consiste em residentes de 11 condados do sudeste de Minnesota que foram diagnosticados com MGUS na Mayo Clinic entre 1º de janeiro de 1960 e 31 de dezembro de 1994.
+
+- **Início do Seguimento:** O tempo de sobrevivência começa a ser contado a partir da data do diagnóstico inicial de MGUS.
+
+- **Evento de Interesse:** O desfecho principal é a **progressão do MGUS para Mieloma Múltiplo** ou outros cânceres de células plasmáticas ou linfoides relacionados (PCM), como linfoma IgM, amiloidose primária, macroglobulinemia, leucemia linfocítica crônica ou plasmocitoma.
+
+- **Métrica do Seguimento:** o tempo é registrado em **meses** (variável ptime), embora o artigo reporte os resultados e probabilidades cumulativas predominantemente em anos.
+
+- **Tempo Máximo de Seguimento:** O acompanhamento dos pacientes estendeu-se por até **35 anos (420 meses).**
+
+- **Censura:** Ocorrem quando a progressão não é observada porque o paciente **faleceu por outras causas** (como doenças cardiovasculares ou outros cânceres não relacionados) antes do desfecho, ou porque o **paciente estava vivo e sem progressão** até o final do acompanhamento em 1999.
+
+---
+
+### Variável do grupo
+
+\begin{res}
+
+\textbf{Creatinina Sérica (creat)} medida no momento do diagnóstico. No estudo original, níveis acima de 2 mg/dL foram encontrados em \textbf{ 6\% dos pacientes}, sendo na época associados a condições como \textit{diabetes} ou \textit{hipertensão}, e não diretamente à proliferação de plasmócitos.
+
+Esta variável é avaliada como um \textbf{potencial preditor clínico para o risco de progressão da doença}.
+
+\end{res}
+
+## Análise de Kaplan-Meier
+
+O banco `mgus2` é utilizado **em sua totalidade, sem truncamento**.
+
+```{r dados}
+
+dados <- mgus2
+
+cat("Dimensões:", nrow(dados), "observações e", ncol(dados), "variáveis\n")
+cat("Eventos observados (pstat = 1):", sum(dados$pstat), "\n")
+cat("Censuras (pstat = 0):", sum(dados$pstat == 0), "\n")
+cat("Tempo mínimo de seguimento:", min(dados$ptime), "mês(es)\n")
+cat("Tempo máximo de seguimento:", max(dados$ptime), "meses\n")
+```
+
+### Estimação
+
+```{r km}
+km <- survfit(Surv(ptime, pstat) ~ 1, data = dados, conf.type = "log-log")
+# km
+```
+
+```{r}
+
+p_surv <- ggsurvplot(km,
+    data       = dados,
+    conf.int   = TRUE,
+    risk.table = TRUE,
+    surv.median.line = "hv",
+    xlab       = "Tempo desde o diagnóstico (meses)",
+    ylab       = "",
+    title      = ""
+)
+
+p_surv
+```
+
+```{r mediana_sobrevivencia}
+# print(summary(km)$table)
+
+summary(km)$table %>%
+  t() %>%
+  as.data.frame() %>%
+  select(records, events, median, `0.95LCL`, `0.95UCL`) %>%
+  rename(
+    "Total (N)" = records,
+    "Eventos" = events,
+    "Mediana (meses)" = median,
+    "L. Inf. (95%)" = `0.95LCL`,
+    "L. Sup. (95%)" = `0.95UCL`
+  ) %>%
+  knitr::kable(caption = "Estatísticas descritivas da curva de Kaplan-Meier",
+               booktabs = TRUE, align = "c") %>%
+  kableExtra::kable_styling(latex_options = c("striped", "hold_position"))
+
+```
+
+A mediana de sobrevivência estimada é de **373 meses** (aproximadamente 31 anos), com limite inferior do IC 95% log-log de 340 meses e limite superior não atingido dentro do período de seguimento disponível. Assim sendo, estima-se que 50% dos pacientes com MGUS apresentam progressão para neoplasia de células plasmáticas em até 373 meses após o diagnóstico. O limite superior indeterminado ocorre porque o banco não possui seguimento suficientemente longo para que a curva de sobrevivência atinja valores tão baixos com precisão estatística. Esse resultado é coerente com o artigo original, que reporta probabilidade cumulativa de progressão de apenas 26% em 25 anos, refletindo o baixo risco anual da condição — uma mediana de sobrevivência em torno de 31 anos é, portanto, esperada.
+
+### Hazard Acumulado
+
+```{r fig.align='center'}
+
+p_cumhaz <- ggsurvplot(km,
+    data       = dados,
+    fun        = "cumhaz",
+    conf.int   = TRUE,
+    risk.table = FALSE,
+    xlab       = "Tempo desde o diagnóstico (meses)",
+    ylab       = "Hazard acumulado",
+    title      = ""
+)
+print(p_cumhaz)
+```
+
+```{r mediana_seguimento}
+
+km_seg <- survfit(Surv(ptime, 1 - pstat) ~ 1, data = dados, conf.type = "log-log")
+# cat("Tempo mediano de seguimento (KM reverso):\n")
+# print(summary(km_seg)$table)
+
+summary(km_seg)$table %>%
+  t() %>%
+  as.data.frame() %>%
+  select(records, events, median, `0.95LCL`, `0.95UCL`) %>%
+  rename(
+    "Total (N)" = records,
+    "Eventos" = events,
+    "Mediana (meses)" = median,
+    "L. Inf. (95%)" = `0.95LCL`,
+    "L. Sup. (95%)" = `0.95UCL`
+  ) %>%
+  knitr::kable(caption = "Estatísticas descritivas do KM Reverso",
+               booktabs = TRUE, align = "c") %>%
+  kableExtra::kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+O tempo mediano de seguimento foi estimado pelo método KM reverso (Schemper e Smith, 1996), que inverte os indicadores de evento e censura: o que era progressão passa a ser censura, e o que era censura passa a ser o desfecho, de modo que a mediana da curva resultante corresponde ao tempo mediano de observação da amostra. Dessa forma, estima-se que 50% dos pacientes foram acompanhados por pelo menos 88 meses (aproximadamente 7,3 anos) após o diagnóstico de MGUS, com IC 95% log-log de [82; 93] meses.
+
+Pela tabela de indivíduos em risco apresentada na Figura 1, é possível observar que aos 100 meses já restam 547 pacientes em acompanhamento, ou seja, cerca de 39,5% da amostra original de 1.384 pacientes, o que é compatível com uma mediana de seguimento pouco abaixo de 100 meses.
+
+**Divergência com o artigo:** Kyle et al. (2002) reportam uma mediana de seguimento de 15,4 anos (aproximadamente 185 meses), valor consideravelmente superior aos 88 meses aqui obtidos. Essa divergência não foi totalmente esclarecida. Uma comparação aproximada pode ser feita a partir do total de 11.009 pessoas-ano de seguimento reportado para os 1.384 pacientes da coorte original, o que corresponde a uma **média** de aproximadamente 7,95 anos (95 meses) por paciente, valor da mesma ordem de grandeza da nossa mediana de 88 meses. No entanto, média e mediana são estatísticas distintas e não diretamente comparáveis, de modo que essa aproximação não constitui uma validação rigorosa, apenas uma indicação de que o resultado obtido não é descabido frente à ordem de grandeza do estudo original.
+
+A estimativa de 88 meses é o resultado correto do KM reverso aplicado ao banco `mgus2`, com a metodologia descrita na disciplina, e sua validade não depende de reproduzir exatamente o valor de 15,4 anos do artigo. A divergência pode decorrer de diferenças entre a definição de tempo de seguimento utilizada no estudo original e a variável `ptime` disponibilizada no pacote `survival`, mas essa hipótese não pôde ser confirmada com o material disponível.
+
+### Estimativas em 5 Anos (60 meses)
+
+```{r}
+est_5a <- summary(km, times = 60)
+```
+
+- S(60) = `r round(est_5a$surv,  4)`
+- IC 95% inf = `r round(est_5a$lower, 4)`
+- IC 95% sup = `r round(est_5a$upper, 4)`
+- $\lambda$(60) = `r round(-log(est_5a$surv), 4)`
+
+**Curva de sobrevivência:** Estima-se que 95,78% dos pacientes com MGUS não apresentaram progressão para neoplasia de células plasmáticas em até 60 meses após o diagnóstico (IC 95% log-log: 94,42% a 96,82%). Equivalentemente, a probabilidade estimada de progressão em até 5 anos é de aproximadamente 4,2%, valor consistente com o risco de cerca de 1% ao ano reportado por Kyle et al. (2002), que descrevem probabilidade cumulativa de progressão de 10% em 10 anos — valor que, assumindo risco aproximadamente constante, implica cerca de 5% em 5 anos.
+
+**Curva de hazard acumulado:** O hazard acumulado estimado em 5 anos é $\hat{\Lambda}(60) = 0{,}0431$. Isso indica que, ao longo dos primeiros 60 meses de seguimento, o risco instantâneo de progressão se acumulou de forma modesta. O crescimento aproximadamente linear da curva de $\hat{\Lambda}(t)$ ao longo do tempo, visível na Figura 2, sugere que o risco instantâneo de progressão $\lambda(t)$ permanece relativamente constante durante o seguimento, sem períodos de risco acentuadamente maior ou menor. Esse padrão é compatível com a afirmação de Kyle et al. (2002) de que o risco de progressão é de aproximadamente 1% ao ano, mantendo-se mesmo após 25 anos de MGUS estável.
+
+## Item 3
+
+**Item 3:** Dicotomizar a variável mspike (tamanho do pico monoclonal sérico, em g/dL) e avaliar se ela é um preditor estatisticamente significativo do evento de interesse **a progressão da GMSI para mieloma múltiplo** (variável pstat). Calcular o **tempo mediano de seguimento** e usá-lo como tempo de truncamento dos dados.
+
+### Truncamento pelo Tempo Mediano de Seguimento
+
+**Método:** O tempo mediano de seguimento é estimado pelo método do estimador inverso de Kaplan-Meier, que consiste em aplicar o estimador de KM ao evento "não progredir" (complemento do evento de interesse), capturando assim a experiência de seguimento dos pacientes que ainda estavam em observação.
+
+\begin{res}
+O tempo mediano de seguimento estimado foi de 88 meses (~7,3 anos). Este valor é utilizado como ponto de truncamento: pacientes que ainda não haviam progredido ou saído do estudo antes de 88 meses são censurados nesse momento, garantindo que a análise se concentre em um horizonte temporal com boa cobertura de dados.
+\end{res}
+
+```{r}
+
+data("mgus2", package = "survival")
+
+km_seguimento <- survfit(Surv(ptime, 1 - pstat) ~ 1, data = mgus2)
+tempo_mediano_seguimento <- summary(km_seguimento)$table["median"]
+
+tempo_corte <- tempo_mediano_seguimento
+
+# Truncamento à direita no tempo mediano de seguimento
+mgus2$ptime_trunc <- pmin(mgus2$ptime, tempo_corte)
+mgus2$pstat_trunc <- ifelse(mgus2$ptime <= tempo_corte, mgus2$pstat, 0)
+
+cat("Progressões observadas dentro do período:", sum(mgus2$pstat_trunc), "\n")
+cat("Censurados ao tempo de corte:", sum(mgus2$ptime_trunc == tempo_corte & mgus2$pstat_trunc == 0), "\n")
+
+
+
+```
+
+### Dicotomização da Variável `mspike`
+
+```{r}
+summary(mgus2$mspike)
+```
+
+\begin{res}
+\textbf{Escolha do ponto de corte:}  O pico monoclonal sérico (mspike) é o marcador laboratorial central da GMSI: representa a quantidade de proteína M (imunoglobulina monoclonal) no sangue. Na literatura clínica de GMSI (Kyle et al., 2002; Rajkumar et al., 2005), valores de pico monoclonal $\geq$  1,5 g/dL estão associados a maior risco de progressão para mieloma múltiplo — esse é o limiar de risco intermediário-alto na estratificação de risco da Mayo Clinic. O valor de 1,5 g/dL é utilizado como corte, coincidindo exatamente com o 3º quartil da distribuição (Q3 = 1,5 g/dL), e resulta em grupos com tamanhos razoáveis: 1.042 no grupo baixo/moderado e 331 no grupo elevado (excluídos 11 NAs).
+\end{res}
+
+```{r dicotomizacao_mspike}
+ponto_corte_mspike <- 1.5
+
+mgus2$mspike_cat <- factor(
+    ifelse(mgus2$mspike <= ponto_corte_mspike, "Baixo/Moderado (<=1.5)", "Elevado (>1.5)"),
+    levels = c("Baixo/Moderado (<=1.5)", "Elevado (>1.5)")
+)
+
+# Remover NAs de mspike para as análises
+dados_analise <- subset(mgus2, !is.na(mspike_cat))
+
+table(dados_analise$mspike_cat) %>%
+ as.data.frame() %>%
+  rename("Categoria" = Var1, "N" = Freq) %>%
+  knitr::kable(caption = "Distribuição dos pacientes por nível de pico monoclonal", booktabs =
+          TRUE) %>%
+  kableExtra::kable_styling(latex_options = "hold_position")
+
+```
+
+### Curvas de Kaplan-Meier
+
+```{r km_mspike_plot, fig.height=5.5}
+km_mspike <- survfit(Surv(ptime_trunc, pstat_trunc) ~ mspike_cat, data = dados_analise)
+
+ggsurvplot(
+    km_mspike,
+    data = dados_analise,
+    pval = TRUE,
+    pval.method = TRUE,
+    conf.int = TRUE,
+    risk.table = TRUE,
+    risk.table.height = 0.28,
+    palette = c(kde_colors[1], kde_colors[2]),
+    title = "KM — Progressão por Nível de Pico Monoclonal",
+    xlab = "Tempo (meses)",
+    ylab = "Sobrevivência sem Progressão",
+    legend = "bottom",
+    legend.labs = c("Baixo/Moderado (< 1,5)", "Elevado (> 1,5)"),
+    ggtheme = theme_minimal(base_size = 11),
+    xlim = c(0, tempo_corte)
+)
+
+```
+
+Curvas de Kaplan-Meier para a probabilidade de sobrevivência sem progressão para mieloma, estratificadas pelo nível do pico monoclonal sérico. As bandas sombreadas representam os intervalos de confiança de 95%. O p-valor exibido corresponde ao teste log-rank.
+
+#### Probabilidades de sobrevivência em pontos selecionados
+```{r}
+
+km_res <- summary(km_mspike, times = c(12, 24, 60, 88))
+
+data.frame(
+    Categoria     = sub("mspike_cat=", "", as.character(km_res$strata)),
+    Tempo_meses   = km_res$time,
+    S_estimada    = round(km_res$surv, 4),
+    IC_95_inf     = round(km_res$lower, 4),
+    IC_95_sup     = round(km_res$upper, 4),
+    N_em_risco    = km_res$n.risk,
+    N_eventos     = km_res$n.event
+)
+```
+
+As curvas de KM revelam uma **separação progressiva e consistente** entre os grupos. Aos 5 anos (60 meses), a probabilidade de sobrevivência sem progressão é de 97,3% no grupo baixo/moderado e **90,9%** no grupo elevado — uma diferença de ~6,4 pontos percentuais. Aos 88 meses (tempo de corte), a diferença aumenta para ~8,6 pontos percentuais (95,3% vs. 86,7%). Essa separação progressiva é evidência visual de associação entre o pico monoclonal e o risco de progressão para mieloma.
+
+
+### Teste Log-Rank
+
+```{r}
+logrank_test <- survdiff(Surv(ptime_trunc, pstat_trunc) ~ mspike_cat, data = dados_analise)
+print(logrank_test)
+```
+
+**Há forte evidência** estatística de que as curvas de sobrevivência sem progressão diferem entre pacientes com pico monoclonal baixo/moderado e elevado. O resultado é altamente significativo: o tamanho do pico monoclonal sérico, dicotomizado em 1,5 g/dL, separa efetivamente dois perfis de risco distintos de progressão para mieloma múltiplo.
+
+### Modelo de Regressão de Cox
+
+```{r}
+cox_mspike <- coxph(Surv(ptime_trunc, pstat_trunc) ~ mspike_cat, data = dados_analise)
+summary(cox_mspike)
+```
+
+O modelo de Cox estima um **HR = 3,161** (IC 95%: 1,958–5,104) para o grupo com pico monoclonal elevado em comparação ao grupo baixo/moderado, com p < 0,0001. O intervalo de confiança exclui inteiramente o valor 1, confirmando a associação estatisticamente significativa.
+
+A interpretação é direta: pacientes com mspike > 1,5 g/dL apresentam um risco de progressão para mieloma aproximadamente **3,2 vezes maior** do que pacientes com pico monoclonal $\leq$ 1,5 g/dL, no horizonte de 88 meses. Esse resultado é consistente com a literatura clínica, que reconhece o tamanho do pico monoclonal como um dos principais fatores prognósticos da GMSI.
+
+### Verificação da Suposição de Riscos Proporcionais
+
+```{r}
+cox_zph <- cox.zph(cox_mspike)
+print(cox_zph)
+ggcoxzph(cox_zph,
+    point.col = kde_colors[1],
+    point.size = 1.5,
+    point.alpha = 0.6,
+    ggtheme = theme_minimal(base_size = 13)
+)
+```
+
+\begin{res}
+O teste de Schoenfeld retorna \textbf{p < = 0,156}, indicando que a suposição de riscos proporcionais não é violada. O HR entre os grupos permanece aproximadamente constante ao longo do tempo de seguimento. O modelo de Cox é, portanto, adequado para os dados em análise.
+\end{res}
+
+### Conclusão do Item 3
+
+**Conclusão:** O pico monoclonal sérico dicotomizado ( $\leq$ 1,5 vs. $\geq$ 1,5 g/dL) é um preditor estatisticamente significativo da progressão da GMSI para mieloma múltiplo nos dados do estudo mgus2, ao nível de significância de 5%, e dentro do horizonte de 88 meses (tempo mediano de seguimento). O modelo de Cox é adequado, pois a suposição de riscos proporcionais é satisfeita (p = 0.156 no teste de Schoenfeld).
+
+---
+
+## Item 4
+
+<div class="callout">
+<strong>Item 4: </strong> Avalie se a covariável <code>creat</code>  é preditor do evento de interesse sem "categorizar" a covariável. Utilize splines para ver se o ajuste "melhora".
+</div>
+
+### Avaliação da covariável <code>creat</code> como preditora
+
+<div class="algorithm">
+<strong>Método:</strong> Para avaliar a creatina como um preditor é necessario ajustar um modelo de Cox com efeito <em>linear</em> da creatinina, testando sua significância por meio do teste da razão de verossimilhanças (LRT).
+</div>
+
+```{r modelos}
+data("mgus2")
+
+mgus2_creat <- mgus2[!is.na(mgus2$creat), ]
+
+# Modelos
+m0 <- coxph(Surv(futime, death) ~ 1,     data = mgus2_creat)
+m1 <- coxph(Surv(futime, death) ~ creat, data = mgus2_creat)
+
+# Resultado do modelo
+summary(m1)
+anova(m0, m1)
+
+```
+
+<div class="interpretation">
+A creatinina mostrou-se um preditor estatisticamente significativo da mortalidade, com Hazard Ratio estimado de 1,089 (IC 95%: 1,056 – 1,122). Isso indica que, a cada aumento de 1 mg/dL na creatinina, o risco de óbito aumenta aproximadamente 8,9%, assumindo proporcionalidade dos riscos. O teste da razão de verossimilhanças mostrou que a inclusão da creatinina resultou em uma melhora significativa no ajuste.
+</div>
+
+
+### Avaliação do modelo
+
+<div class="algorithm">
+<strong>Método:</strong> A qualidade do ajuste global do modelo é avaliada pelo gráfico dos <em>resíduos de Cox-Snell</em>, que consiste em estimar o hazard acumulado dos resíduos via Kaplan-Meier e compará-lo com a reta de referência de inclinação 1. Um ajuste adequado é indicado pela proximidade da curva estimada à diagonal.
+</div>
+
+```{r Cox-Snell}
+res_cs <- mgus2_creat$death - residuals(m1, type = "martingale")
+
+km_cs <- survfit(Surv(res_cs, mgus2_creat$death) ~ 1)
+
+plot(km_cs, fun = "cumhaz",
+     xlab = "Resíduo de Cox-Snell",
+     ylab = "Hazard Acumulado",
+     main = "Gráfico de Cox-Snell")
+abline(0, 1, col = "red", lty = 2)
+```
+
+<div class="interpretation">
+Na região inicial, correspondente à maior parte dos pacientes, a curva acompanha a diagonal de forma satisfatória, indicando que o modelo descreve adequadamente o risco para a maioria das observações. Contudo, a partir de resíduos superiores a aproximadamente 2,5, a curva se afasta sistematicamente abaixo da diagonal, sugerindo que o modelo subestima o risco nos pacientes com valores mais elevados de creatinina.
+</div>
+
+### Analise da suposição de riscos proporcionais
+
+<div class="algorithm">
+<strong>Método:</strong> A suposição de riscos proporcionais é avaliada graficamente pelos <em>resíduos de Schoenfeld</em>, verificando se a curva suavizada de β(t) se mantém aproximadamente horizontal ao longo do tempo.
+</div>
+
+```{r resíduos de Schoenfeld}
+ph_test <- cox.zph(m1)
+
+plot(ph_test,
+     col  = "black",
+     lwd  = 2,
+     xlab = "Tempo (meses)",
+     ylab = "Beta(t) — creat",
+     main = "Resíduos de Schoenfeld: creat")
+abline(h   = coef(m1)["creat"],
+       col = "red",
+       lty = 2,
+       lwd = 2)
+```
+<div class="interpretation">
+Visualmente, a curva se mantém aproximadamente horizontal ao longo de todo o período de acompanhamento, sem tendência sistemática de crescimento ou decrescimento, o que é consistente com a suposição de proporcionalidade dos riscos.
+</div>
+
+
+### Avaliando relação não-linear com Splines
+
+<div class="algorithm">
+<strong>Método:</strong> Para avaliar a não-linearidade do efeito da creatinina, ajusta-se um modelo de Cox com <em>P-spline</em> via <code>pspline()</code>, decompondo o efeito em componentes linear e não-linear. A significância de cada componente é avaliada pelo qui-quadrado reportado no <code>summary()</code>.
+</div>
+
+
+```{r}
+m2 <- coxph(Surv(futime, death) ~ pspline(creat, df = 4), data = mgus2_creat)
+summary(m2)
+```
+
+
+```{r}
+
+termplot(m2, term = 1, se = TRUE,
+         col.term = "black",
+         col.se   = "gray70",
+         xlab     = "Creatinina (mg/dL)",
+         ylab     = "Efeito parcial (log HR)",
+         main     = "P-Spline: efeito de creat (log-HR)")
+```
+
+
+<p class="plot-caption">
+**Figura 1.** Efeito parcial da creatinina na escala do log-HR estimado pelo P-spline, com intervalo de confiança de 95%.
+</p>
+
+<div class="interpretation">
+O componente não-linear (χ² = 92,97, 3 gl, p < 0,001) é significativo, evidenciando que a relação não segue uma forma linear simples, apresentando curvatura estatisticamente significativa que o modelo linear não era capaz de capturar. A Figura 1 confirma visualmente a <strong>não-linearidade significativa </strong> detectada pelo componente não-linear do P-spline.
+</div>
+
+### Comparações e conclusoes
+
+```{r}
+par(mfrow=c(1, 2))
+res_cs_m2 <- mgus2_creat$death - residuals(m2, type = "martingale")
+
+km_cs_m2 <- survfit(Surv(res_cs_m2, mgus2_creat$death) ~ 1)
+
+plot(km_cs_m2, fun = "cumhaz",
+     xlab = "Resíduo de Cox-Snell",
+     ylab = "Hazard Acumulado",
+     main = "Gráfico de Cox-Snell — P-Spline")
+abline(0, 1, col = "red", lty = 2)
+
+
+plot(km_cs, fun = "cumhaz",
+     xlab = "Resíduo de Cox-Snell",
+     ylab = "Hazard Acumulado",
+     main = "Gráfico de Cox-Snell")
+abline(0, 1, col = "red", lty = 2)
+```
+
+<p class="plot-caption">
+**Figura 2.** Comparação dos gráficos de resíduos de Cox-Snell entre o modelo com P-spline e o modelo linear.
+</p>
+
+
+<div class="interpretation">
+<strong>Conclusão:</strong> O modelo linear confirmou que a creatinina <strong> é um preditor estatisticamente significativo </strong> da mortalidade (HR = 1,089; IC 95%: 1,056–1,122; p < 0,001), com a suposição de riscos proporcionais sustentada pelos resíduos de Schoenfeld. Contudo, revelou limitação na capacidade preditiva por não capturar a variabilidade <strong>não-linear</strong> da variável.  '
+
+O modelo com a adição do P-spline demonstrou que a relação entre creatinina e risco de óbito é <strong>significativamente não-linear</strong> (componente não-linear: χ² = 92,97, p < 0,001). O LRT indicou uma melhora com a inclusão do spline (<strong>LRT = 110,4</strong> vs. 19,55 no modelo linear), confirmando que a especificação flexível é mais adequada para esta covariável. Essa melhora é também visível na Figura 2, onde a curva do modelo com spline <strong>acompanha a diagonal de referência de forma mais próxima</strong> em comparação ao modelo linear.
+</div>
+
+## Item 5
+
+<div class="callout">
+<strong>Item 5: </strong> Avalie se a covariável <code>creat</code> é confundidora da associação entre <code>mspike</code> e o evento de interesse sem "categorizar" a covariável. Discuta os resultados.
+</div>
+
+<!-- ### Estratégia Analítica
+
+<div class="algorithm">
+<strong>Método:</strong> Na modelagem estatística, uma variável é considerada <strong>confundidora</strong> se a sua inclusão no modelo alterar substancialmente a estimativa do efeito da exposição principal sobre o desfecho.
+<br><br>
+Para avaliar isso, ajustaremos dois modelos de Cox para o desfecho de progressão para malignidade (<code>ptime</code> e <code>pstat</code>):
+<ol>
+  <li><strong>Modelo Bruto:</strong> Contendo apenas o tamanho do pico monoclonal (<code>mspike</code>) contínuo como preditor.</li>
+  <li><strong>Modelo Ajustado:</strong> Contendo <code>mspike</code> e a potencial variável de confusão <code>creat</code> (ambas contínuas).</li>
+</ol>
+O critério metodológico para identificar confundimento é observar uma <strong>variação relativa do coeficiente log-HR ($\Delta \beta$)</strong> da exposição principal superior a 10% após o ajuste. Para garantir a comparabilidade rigorosa, ambos os modelos devem ser ajustados exatamente na mesma subamostra (excluindo dados faltantes em ambas as variáveis).
+</div>
+
+```{r modelo_confundimento}
+# Preparar a base garantindo a mesma amostra para os dois modelos (complete cases)
+dados_conf <- subset(mgus2, !is.na(mspike) & !is.na(creat))
+
+# 1. Modelo Bruto (apenas mspike)
+mod_bruto <- coxph(Surv(ptime, pstat) ~ mspike, data = dados_conf)
+
+# 2. Modelo Ajustado (mspike + creat)
+mod_ajustado <- coxph(Surv(ptime, pstat) ~ mspike + creat, data = dados_conf)
+
+# Extração dos coeficientes (Beta) para mspike
+beta_bruto <- coef(mod_bruto)["mspike"]
+beta_ajustado <- coef(mod_ajustado)["mspike"]
+
+# Cálculo da Variação Percentual Relativa (Delta Beta)
+delta_beta <- abs((beta_ajustado - beta_bruto) / beta_bruto) * 100
+
+# Exibição dos resultados em tabela
+tabela_conf <- data.frame(
+  Modelo = c("Bruto (apenas mspike)", "Ajustado (mspike + creat)"),
+  Beta = c(beta_bruto, beta_ajustado),
+  HR = c(exp(beta_bruto), exp(beta_ajustado)),
+  p_valor = c(summary(mod_bruto)$coefficients["mspike", "Pr(>|z|)"],
+              summary(mod_ajustado)$coefficients["mspike", "Pr(>|z|)"])
+)
+
+knitr::kable(tabela_conf, digits = 4,
+             row.names = FALSE,
+             caption = "Comparação dos efeitos do mspike com e sem ajuste para creatinina",
+             booktabs = TRUE, align = "c") %>%
+  kableExtra::kable_styling(latex_options = c("striped", "hold_position"))
+
+```
+
+Como essa variação é `r ifelse(delta_beta > 10, "superior", "inferior")` a 10%, concluímos que o nível sérico de creatinina `r ifelse(delta_beta > 10, "atua", "não atua")` como uma variável de confusão para a associação entre o tamanho do pico monoclonal e a progressão da GMSI para mieloma múltiplo. -->
+
+<div class="callout">
+<strong>Item 5: </strong> Avalie se a covariável <code>creat</code> é confundidora da associação entre <code>mspike</code> e o evento de interesse sem "categorizar" a covariável. Discuta os resultados.
+</div>
+
+### Estratégia Analítica
+
+<div class="algorithm">
+<strong>Método:</strong> Para que a creatinina seja considerada um fator de confusão clássico na relação entre o tamanho do pico monoclonal (<code>mspike_cat</code>) e a progressão para mieloma, ela deve satisfazer os critérios epidemiológicos avaliados nas seguintes etapas:
+<ol>
+  <li><strong>Condição 1:</strong> Estar associada ao desfecho (risco de progressão).</li>
+  <li><strong>Condição 2:</strong> Estar associada à exposição principal (diferença de creatinina entre os grupos de <code>mspike_cat</code>).</li>
+  <li><strong>Condição 3 (Critério Operacional):</strong> Alterar a estimativa de efeito (log-HR) da exposição principal em mais de 10% quando incluída no modelo de Cox.</li>
+</ol>
+Para garantir comparabilidade, todas as análises abaixo utilizam uma subamostra sem dados faltantes para ambas as variáveis.
+</div>
+
+```{r analise_confundimento}
+# Preparar a base garantindo a mesma amostra para as análises (complete cases)
+# Utilizando as variáveis criadas no Item 3 (ptime_trunc, pstat_trunc, mspike_cat)
+dados_conf <- subset(dados_analise, !is.na(creat))
+
+# ---------------------------------------------------------
+# Condição 1: Associação entre creat e o desfecho (progressão)
+# ---------------------------------------------------------
+mod_creat_desfecho <- coxph(Surv(ptime_trunc, pstat_trunc) ~ creat, data = dados_conf)
+res_cond1 <- summary(mod_creat_desfecho)
+
+# ---------------------------------------------------------
+# Condição 2: Associação entre creat e a exposição (mspike_cat)
+# ---------------------------------------------------------
+# Teste de Wilcoxon-Mann-Whitney (já que creat é contínua e mspike_cat é dicotômica)
+teste_assoc <- wilcox.test(creat ~ mspike_cat, data = dados_conf)
+
+# ---------------------------------------------------------
+# Condição 3: Comparação de Modelos (Quantificação do Confundimento)
+# ---------------------------------------------------------
+# Modelo Bruto
+mod_bruto <- coxph(Surv(ptime_trunc, pstat_trunc) ~ mspike_cat, data = dados_conf)
+
+# Modelo Ajustado
+mod_ajustado <- coxph(Surv(ptime_trunc, pstat_trunc) ~ mspike_cat + creat, data = dados_conf)
+
+# Extração dos coeficientes (Beta) para mspike_cat (nível Elevado)
+beta_bruto <- coef(mod_bruto)["mspike_catElevado (>1.5)"]
+beta_ajustado <- coef(mod_ajustado)["mspike_catElevado (>1.5)"]
+
+# Cálculo da Variação Percentual Relativa (Delta Beta)
+delta_beta <- abs((beta_ajustado - beta_bruto) / beta_bruto) * 100
+
+```
+
+Condição 1: creat está associada ao desfecho?
+
+```{r}
+cat("HR da Creatinina:", round(exp(coef(mod_creat_desfecho)), 3), "\n")
+cat("Valor-p:", round(res_cond1$coefficients[,"Pr(>|z|)"], 4), "\n")
+```
+
+A análise univariada mostrou que a creatinina não apresentou associação estatisticamente significativa com o tempo até a progressão para mieloma múltiplo (p = `r round(res_cond1$coefficients[,"Pr(>|z|)"], 3)`). O primeiro critério para confundimento já falha aqui.
+
+Condição 2: creat está associada à exposição (mspike_cat)?
+
+```{r}
+cat("Teste de Wilcoxon-Mann-Whitney (Valor-p):", round(teste_assoc$p.value, 4), "\n")
+```
+
+O teste não paramétrico indica que não há diferença significativa (p = `r round(teste_assoc$p.value, 3)`) nos níveis de creatinina entre os pacientes com pico monoclonal baixo/moderado e aqueles com pico elevado. O segundo critério também falha.
+
+
+Condição 3: Comparação de Modelos ($\Delta \beta$)
+
+```{r}
+tabela_conf <- data.frame(
+  Modelo = c("Bruto (apenas mspike_cat)", "Ajustado (mspike_cat + creat)"),
+  Beta = c(beta_bruto, beta_ajustado),
+  HR = c(exp(beta_bruto), exp(beta_ajustado)),
+  p_valor = c(summary(mod_bruto)$coefficients["mspike_catElevado (>1.5)", "Pr(>|z|)"],
+              summary(mod_ajustado)$coefficients["mspike_catElevado (>1.5)", "Pr(>|z|)"])
+)
+
+knitr::kable(tabela_conf, digits = 4,
+             row.names = FALSE,
+             caption = "Comparação dos efeitos do mspike_cat com e sem ajuste para creatinina",
+             booktabs = TRUE, align = "c") %>%
+  kableExtra::kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+Primeiro, não demonstrou ser um fator de risco independente para a progressão da GMSI (Condição 1). Segundo, não apresentou distribuição desigual entre os níveis de exposição do pico monoclonal (Condição 2). Por fim, o critério estritamente operacional demonstrou que a inclusão da creatinina no modelo resultou em uma variação do coeficiente (log-HR) da exposição de apenas r round(delta_beta, 2)%, valor bem inferior ao limiar de 10% tradicionalmente adotado.
+
+Conclusão: A covariável creatinina não é um fator de confusão. O impacto preditivo do tamanho do pico monoclonal sobre a progressão da doença é independente da função renal do paciente no momento do diagnóstico.
